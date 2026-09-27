@@ -1,0 +1,54 @@
+# Public-tree ignores (DECISIONS.md D8: research/ + tmp/ from first commit).
+research/
+tmp/
+tmp-selftest-*/
+
+# Build artifacts.
+*.o
+*.a
+port_cli
+results/
+
+# Python droppings.
+__pycache__/
+
+# Built unit-test binaries (sources are test_*.c).
+tests/unit/test_boundary
+tests/unit/test_comp_roundtrip
+tests/unit/test_e00_vectors
+tests/unit/test_framing
+tests/unit/test_huff_suffix
+tests/unit/test_m16_db7
+tests/unit/test_m16_mtf_za
+tests/unit/test_m16_shapep_eb4
+tests/unit/test_m19_c21
+tests/unit/test_m19_cli_cap
+tests/unit/test_m19_m12
+tests/unit/test_m19_shapep_long
+tests/unit/test_m21_shapep_suf
+tests/unit/test_m21_wrap_split
+tests/unit/test_m22_e2a
+tests/unit/test_m22_shaper
+tests/unit/test_m23_match_wrap
+tests/unit/test_m24_e2a_tail
+tests/unit/test_m24_u6q_dec
+tests/unit/test_m25_shaper12
+tests/unit/test_m25_shaper12_veto
+tests/unit/test_m26_shaper12b
+tests/unit/test_m26_shaper12b_veto
+tests/unit/test_m27_e2c_veto
+tests/unit/test_m27_tokrepeat
+tests/unit/test_m29_e2b_term
+tests/unit/test_m30_shaper12cd
+tests/unit/test_m30_shaper12cd_veto
+tests/unit/test_m31_b1_len
+tests/unit/test_m31_b3_index
+tests/unit/test_m31_q1_gate
+tests/unit/test_m31_q1_skip
+tests/unit/test_m32_slots_fixa
+tests/unit/test_mtf
+tests/unit/test_p2_tailsplit
+tests/unit/test_q2_splitemit
+tests/unit/test_roundtrip
+tests/unit/test_s3_padsim
+!tests/unit/test_*.c

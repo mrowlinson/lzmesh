@@ -1,0 +1,52 @@
+# Vendored Apple E00 oracle vectors (black-box bytes from tmp/oraclecache/e00.zip)
+# Each input verified pure-zero: sha256(b'\x00'*n) == manifest cell input_sha.
+# Columns: file | n (plain = n zero bytes) | kind | oracle input_id | out_sha16 | fnv1a32
+n000000.bin 0 end s01-n000000-zeros-v1 a8100ae6aa1940d0 7a0b824e
+n000001.bin 1 raw s00-n000001-zeros-v1 b20e2d931f7724d9 94d3673f
+n000008.bin 8 raw s05-n000008-zeros-v1 bf6ff5a0d6f88701 ad942248
+n000021.bin 21 raw s04-n000021-zeros-v1 f617ef71bfb7132e b7d4f293
+n000022.bin 22 comp s09-n000022-zeros-v1 7c2b5ea3407c1f83 2182e858
+n000032.bin 32 comp s00-n000032-zeros 54c6a2d8ae675059 a5170712
+n000100.bin 100 comp s00-n000100-zeros 6ed4df14bfbb732a 9cb2effe
+n001000.bin 1000 comp s13-n001000-zeros baac07997598d05b 9bbd9690
+n004096.bin 4096 comp s02-n004096-zeros c7b645fc9d97fec1 8cc93f16
+n032768.bin 32768 comp s09-n032768-zeros 15591b9f97b56d37 c35b728b
+# S3 V-OR padsim fixtures (LANE-S3): battery-generated sparse inputs, vendored
+# from tmp/byteexact/rescore-q/vectors (cleanroom: our own generator bytes).
+# file | n | kind | battery input_id | input_sha256
+s3-s06-e05-in.bin 1024 sparse s06-n1024-sparse a2f5f701aa3ff97bebf2c2217e5d98083f72428422555e9c0fc249c2de8817cd
+s3-s12-e05-in.bin 1024 sparse s12-n1024-sparse bca939e8e1556252df5c599e540a71f36a858ba3fd88918db3a563ea141c0647
+# V1 R==1 S2-shift fixture (LANE-V-E01BULK): battery input; want bytes inline
+# in test_s3_padsim.c (s02e01_want, oracle a617acf7a07e2ed4). file | n | kind | battery input_id | input_sha256
+s3v1r1-s02-e01-in.bin 257 alphabet s02-n257-alphabet 7b065f294fba2448bc166a8faa194db3a89977876480974b565e01b9c1d8991b
+# V2small padsim fixtures (LANE-U-E05TRIO): battery input + oracle bytes,
+# vendored from tmp/verify-t/merged-full/vectors (input) and oracle_probe
+# output (want). file | n | kind | battery input_id | input_sha256
+s3v2-s00-e05-in.bin 4096 alphabet s00-n4096-alphabet 0753ca78681fb0f56c297a721e3bb1c76d87f798e88e69102f493d6fc4be9d52
+s3v2-s00-e05-want.bin 3792 oracle-bytes s00-n4096-alphabet-e05 c30ba6ba1b5d6e5d41e6067b1ceb40eed81f74fe944cb2cbf2277211a3bf77c2
+# V-CONSUME u21-veto fixture (LANE-V-CONSUME): battery-generated sparse input,
+# vendored from tmp/f1-full/vectors (cleanroom: our own generator bytes).
+vc-s11-e09-in.bin 257 sparse s11-n257-sparse 6571ee7d0ae63d9f9393a1f5e4fdb7b00c86db3018d9c53741acf153697c0f62
+# W-E01BULK lane0-minoverlap fixture: battery input + oracle bytes, vendored
+# from tmp/verify-v/merged-full/vectors (input) and oracle_probe output (want).
+w-s04n1000-e01-in.bin 1000 alphabet s04-n1000-alphabet 8fa96a2c0a506c06988bae2ace3548b6eb02a48794ddf161cf31c53e6695c246
+w-s04n1000-e01-want.bin 563 oracle-bytes s04-n1000-alphabet-e01 d7f987fee5632cb19b2d89442fa1cdfa7b612b390c8f9bfd181a207682666403
+# X-E01RAZOR fixtures: B-TAB lastL=1 row (s03 H3 lanes) + V1 R==1 vacuity /
+# V2small tok<=12 (s18n128 G1 lanes). Battery inputs vendored from
+# tmp/verify-w/{m7-full,m7-hold}/vectors; want = oracle_probe bytes.
+x-s03-e01-in.bin 16384 alphabet s03-n16384-alphabet 77b25714be1cbf3ba6a3de2d08d628519491f8b73bcaaaae1a0f4c27ca68892d
+x-s03-e01-want.bin 8087 oracle-bytes s03-n16384-alphabet-e01 8dfd432ab6d7514273d8c42494dcb26155703a4a0a307c5ea5a07ce797b12df2
+x-s18n128-e01-in.bin 128 alphabet s18-n128-alphabet 6e0cb91240aba8124a0743faddd296111e69b5f32f8a410ba911f8b944cf4ea9
+# AA-E01BIG fixtures: genuine L1 fixpoint (fresh cuts; 6xd7595 takes) + V1
+# padsim on H3 path (lanes 2,3,6,7 pads). Battery input vendored from
+# tmp/verify-z/merged-hold/vectors; want = oracle_probe bytes.
+aae01big-s18n65536-e01-in.bin 65536 alphabet s18-n65536-alphabet f3a391fe1aa15f44d61bb3b571ab58f8c77263894a1edc52cb58d824e4bf88a5
+aae01big-s18n65536-e01-want.bin 33090 oracle-bytes s18-n65536-alphabet-e01 1ecf48fcd582878c929973037a80748570efb65d9ae3f51fc8626b5148c1b1ab
+# AA-SPARSE fallback B-TAB lastL=2 row (kk 7) = bit0. Holdout input vendored
+# from tmp/verify-z/merged-hold/vectors; want bytes inline in test_s3_padsim.c
+# (aa_s17n1025_want, oracle 27a50fb356e0020d, same bytes e05+e09).
+aa-s17n1025-e05-in.bin 1025 sparse s17-n1025-sparse 0c257d2a50609ba21dca1d1353faf611c00f40bd7aeee105b172c03f8f812781
+# AA-SPARSE u30-L1-decline fixture. Holdout input vendored from
+# tmp/verify-z/merged-hold/vectors; want bytes inline in test_s3_padsim.c
+# (aa_s18n256_want, oracle 9dbd07ae1304a37c).
+aa-s18n256-e01-in.bin 256 sparse s18-n256-sparse a34b5a96c677d26b4af1291367e07fc39c75391f446dfdc06a7870df54adcb16
