@@ -16,6 +16,11 @@ linked. Buffer API only — no streaming API provided.
 
 Gated: 15792/15792 cells 100%, 0 ENC_DIFF vs Apple oracle.
 
+As of 2026-09-28, source lanes/lane-4 @ e582954c (codec-identical
+to the gated P6 merge 88b5a27b — e582954c touches scratch only) plus
+comment-only SPDX headers. `make unit`: 44/44 suites green, fail=0.
+Vector fixtures: 25 .bin + manifest (26 files, unchanged).
+
 - Full corpus: 12784/12784. Seeds 0–16, selectors
   e00/e01/e05/e09, tier full.
 - Holdout: 3008/3008. Seeds 17–20 (disjoint from full).
@@ -41,6 +46,44 @@ gated range), 5 pre-existing diffs, next frontier:
 
 The 5 are byte-identical before and after the gating merge
 (pre-existing, merge-inert); 0 new diffs introduced.
+
+## Performance
+
+Throughput in MiB/s, medians over 35 samples (5 runs × 7 reps,
+interleaved base/opt, pinned corpus), text-256k input, Apple M1 Max,
+Apple clang 21 `-O2 -std=c11`. Method: `docs/PERF.md`.
+
+| op | level | P1 baseline | P6 | cumulative |
+|----|-------|-------------|----|------------|
+| enc | L0 | 70.92 | 120.31 | +69.6% |
+| enc | L1 | 3.77 | 14.16 | +275.6% |
+| enc | L5 | 4.90 | 10.97 | +123.9% |
+| enc | L9 | 0.29 | 4.25 | +1365.5% |
+| dec | L0 | 87.35 | 451.26 | +416.6% |
+| dec | L1 | 118.15 | 224.01 | +89.6% |
+| dec | L5 | 125.06 | 222.02 | +77.5% |
+| dec | L9 | 124.63 | 224.62 | +80.2% |
+
+Sources: P1 column = `docs/PERF.md` baseline 2026-09-28; P6 column
+= P6 merge opt medians (n=35/35 every cell). Per-round chain behind
+the cumulative (same-host back-to-back uplifts, text-256k): P2 dec
+L0 +298.8%, enc L9 +1143.8%; P3 enc L5 +15.2%; P4 enc L1 +24.2% /
+L5 +21.7%; P5 enc L9 +28.4%; P6 dec L0 +30.3% / L1 +10.8% /
+L5 +5.3% / L9 +7.5%, enc L0 +27.6%. Caveat: the P1 L9-enc median
+(0.29) carries a documented host-noise excursion (`docs/PERF.md`
+provenance note), so that row's ×14.7 is partly noise-floor
+artifact — the per-round chain is the honest unit.
+
+PGO is opt-in and build-only (`make pgo`; the default build tree is
+untouched, no source change). Measured text-256k: enc L9 +13.5%,
+dec L1 +36.0% / L5 +34.7% / L9 +39.2% (n=35). Byte-identity holds
+under PGO: PGO-binary FULL battery 12784/12784 PASS.
+
+Apple gap, stated plainly: no oracle timing has ever been run
+(`docs/PERF.md` oracle column reads "not run" — no oracle-timing
+harness exists), so no port-vs-Apple speed comparison is claimed.
+Every number above is port-vs-port. Matching or beating Apple
+throughput is in-progress future work, not a result.
 
 ## Clean-room methodology
 
@@ -113,8 +156,12 @@ the codec.
 ```
 README.md            this file
 BUILD.md             build + test gates, pinned to this tree
-LICENSE              license text
-Makefile             all / selftest / unit / smoke / full / clean
+CHANGELOG.md         release history (Keep a Changelog)
+LICENSE              license text (0BSD; injected at export)
+LICENSE-CHOICE.md    decided license + pre-decision memo history
+RELEASE-CHECKLIST.md ordered gates before publish
+.gitignore           ignores (injected at export)
+Makefile             all / selftest / unit / smoke / full / bench / pgo / clean
 DECISIONS.md         every skeleton choice + its source directive
 include/lzmesh.h     public API: encode, decode, scratch sizes,
                      decoded-size framing walker
@@ -122,9 +169,10 @@ src/                 port sources + port_cli.c (battery CLI:
                      enc|dec <selector-hex>, stdio byte pipe)
 tests/battery/       vendored divergence-battery framework (pinned)
 tests/unit/          fast unit tests + vector fixtures
-bench/               benchmarks
-docs/                BUILD / TESTING / API / PERF + CLEANROOM-LOG +
-                     DERIVATION
+bench/               benchmarks + pinned corpus + generator
+release/             deterministic public-tree exporter (export.sh)
+docs/                BUILD / TESTING / API / PERF / RELEASING /
+                     SPEC-S9CR + CLEANROOM-LOG + DERIVATION + README
 ```
 
 What does NOT ship: research notes, agent scratch, battery result

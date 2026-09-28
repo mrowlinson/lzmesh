@@ -48,6 +48,12 @@ tests/unit/test_m31_q1_skip
 tests/unit/test_m32_slots_fixa
 tests/unit/test_mtf
 tests/unit/test_p2_tailsplit
+tests/unit/test_p3n1_extend
+tests/unit/test_p4n3_gate
+tests/unit/test_p5_wordload
+tests/unit/test_p6_mcopy
+tests/unit/test_p6_u35acc
+tests/unit/test_pm_diff
 tests/unit/test_q2_splitemit
 tests/unit/test_roundtrip
 tests/unit/test_s3_padsim

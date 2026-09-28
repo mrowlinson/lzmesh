@@ -71,9 +71,11 @@ anywhere in this repo; §-pointers below are navigation, not content.
 - D9 `port_cli.c` lives in src/, built by `make port_cli`. From:
   "src/ BUILD* CLI" lane deliverable (SCAFFOLD), "src/ complete port
   + port_cli binary or build recipe" (implementer brief).
-- D10 License = OPEN. 10 §10.2.3 shows NOTICE + LICENSE at root but
-  names no license for clean-side code in the window read. No LICENSE,
-  no NOTICE, no file headers invented. Coordinator names it.
+- D10 License = 0BSD (DECIDED 2026-09-28, owner directive; see
+  LICENSE-CHOICE.md). Was (SUPERSEDED): OPEN — 10 §10.2.3 shows
+  NOTICE + LICENSE at root but names no license for clean-side code
+  in the window read; no LICENSE, no NOTICE, no file headers
+  invented; coordinator names it.
 - D11 Zero spec content in skeleton. Clause §-pointers used as
   navigation in this file only; no field layouts, values, or grammar
   reproduced anywhere under portrepo/.
@@ -89,7 +91,8 @@ anywhere in this repo; §-pointers below are navigation, not content.
 
 ## OPEN (directives silent — coordinator decides)
 
-- O1 License choice for clean-side code (blocks first commit shape).
+- O1 License choice: RESOLVED 2026-09-28 = 0BSD (owner directive;
+  D10). Was: OPEN, blocked first-commit shape.
 - O2 Final spec path + freeze hash lanes may read (blocks all lanes;
   cf. SCAFFOLD Q2). Nothing starts without it.
 - O3 API shape confirm: simplified (D5) vs Apple-exact 6-arg mirror.

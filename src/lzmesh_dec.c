@@ -7,6 +7,17 @@
  */
 #include "lzmesh.h"
 
+/* P3-N2: NEON match-copy fast path switch. arm_neon.h intrinsics only
+ * (no asm). LZMESH_SCALAR (compile -DLZMESH_SCALAR=1 or make
+ * LZMESH_SCALAR=1) forces scalar; off-__ARM_NEON defaults scalar
+ * (guard-clean: compiles anywhere). */
+#if defined(__ARM_NEON) && !defined(LZMESH_SCALAR)
+#include <arm_neon.h>
+#define LZ_U3_HAVE_NEON 1
+#else
+#define LZ_U3_HAVE_NEON 0
+#endif
+
 /* === container/framing + lzmesh_decoded_size (owner: u1) === */
 /* u1: tags S2.1, RAW S2.2, COMP hdr S2.3, gates S2.4/S6.5, walk S2.8. */
 enum {
@@ -368,14 +379,210 @@ uint32_t lz_u3_dist(uint32_t sb, uint32_t low3, uint32_t suffix) {
 }
 
 /* --- match copy (S4.4) --- */
-/* dst[0..w_tot] valid, d>=1, d<=w (C13), room for n (C18/match_take).
- * Single forward loop: correct for overlap (d<n, incl d==1) and
- * non-overlap alike; dual-path split is PERF-only (PM-D2). */
-static void lz_u3_match_copy(uint8_t *dst, size_t w, uint32_t d, size_t n) {
-    size_t i;
-    for (i = 0; i < n; i++) {
-        dst[w + i] = dst[w + i - (size_t)d];
+#if LZ_U3_HAVE_NEON
+/* Local getenv decl (file convention: no <stdlib.h>; cf lz_u6h_alloc). */
+extern char *getenv(const char *name);
+/* P3-N2 runtime gate: LZMESH_SCALAR set in env forces scalar at runtime.
+ * Cached read-once (P2-getenv style); per-call cost is one static load. */
+static int lz_u3_neon_ok(void) {
+    static int init = 0;
+    static int on = 1;
+    if (init == 0) {
+        init = 1;
+        if (getenv("LZMESH_SCALAR") != NULL) {
+            on = 0;
+        }
     }
+    return on;
+}
+#endif
+/* P6-W5 word-copy primitives. memcpy is the canonical unaligned op
+ * (clang/gcc lower fixed 2/4/8 to ld/st on ARM64; same idiom as
+ * P5-W3 lzmesh_wl_*). Every op below pairs a load with a same-width
+ * store, so bytes move verbatim (endianness-neutral, no LE
+ * assumption). Local decl keeps the file's no-libc-header convention
+ * (cf getenv above). The #undef disarms <string.h>'s fortified
+ * memcpy macro when this file is #included by a test that already
+ * pulled <string.h> (harmless no-op otherwise). */
+#ifdef memcpy
+#undef memcpy
+#endif
+extern void *memcpy(void *dst, const void *src, size_t n);
+static uint16_t lz_u3_mc_ld16(const uint8_t *p) {
+    uint16_t v;
+    memcpy(&v, p, 2);
+    return v;
+}
+static uint32_t lz_u3_mc_ld32(const uint8_t *p) {
+    uint32_t v;
+    memcpy(&v, p, 4);
+    return v;
+}
+static uint64_t lz_u3_mc_ld64(const uint8_t *p) {
+    uint64_t v;
+    memcpy(&v, p, 8);
+    return v;
+}
+static void lz_u3_mc_st16(uint8_t *p, uint16_t v) {
+    memcpy(p, &v, 2);
+}
+static void lz_u3_mc_st32(uint8_t *p, uint32_t v) {
+    memcpy(p, &v, 4);
+}
+static void lz_u3_mc_st64(uint8_t *p, uint64_t v) {
+    memcpy(p, &v, 8);
+}
+/* Width-capped tail: copies r bytes t[0..r) = s[0..r) with op widths
+ * <= d (u32 only when d>=4; u16/u8 need d>=2/1, always true here).
+ * Safety rule (forward, low-to-high): an op of width k at dest t
+ * reads [t-d,t-d+k), fully written iff t-d+k<=t iff k<=d. Callers
+ * pass s = t-d with those widths, so every op reads final bytes by
+ * construction. Exact: writes exactly r bytes, never overruns. */
+static void lz_u3_mc_tail(uint8_t *t, const uint8_t *s, size_t r,
+                          uint32_t d) {
+    if (r >= (size_t)4 && d >= (uint32_t)4) {
+        lz_u3_mc_st32(t, lz_u3_mc_ld32(s));
+        t += (size_t)4;
+        s += (size_t)4;
+        r -= (size_t)4;
+    }
+    if (r >= (size_t)2) {
+        lz_u3_mc_st16(t, lz_u3_mc_ld16(s));
+        t += (size_t)2;
+        s += (size_t)2;
+        r -= (size_t)2;
+    }
+    if (r != (size_t)0) {
+        *t = *s;
+    }
+}
+/* dst[0..w_tot] valid, d>=1, d<=w (C13), room for n (C18/match_take).
+ * P2-bitio: 3 paths, all byte-identical to the single forward loop:
+ * d==1 fills dst[w-1] (chain collapses); d>=8 copies 8B unrolled
+ * (chunk sources sit fully below chunk dests, so no intra-chunk
+ * overlap); d<8 keeps the byte loop.
+ * P3-N2: renamed _scalar; the dispatcher below adds a 16B NEON bulk
+ * for d>=16 && n>=16 and routes everything else (+tails) here.
+ * P6-W5: word-at-a-time scalar. d==1 splat-fills u64 bulk + byte
+ * tail; d>=8 runs u64 bulk (covers the n8-15 prize in 1-2 ops) +
+ * width-capped tail (n<8 fully worded too); d2-7 runs period-chunk
+ * word loops (chunk == d bytes, op widths <= d, first chunk reads
+ * pure history) + the same capped tail. All paths exact-n, no
+ * overrun reads or writes; overlap behavior == single forward loop
+ * (each op's source sits fully below its dest start). */
+static void lz_u3_match_copy_scalar(uint8_t *dst, size_t w, uint32_t d,
+                                    size_t n) {
+    size_t i;
+    size_t n8;
+    uint8_t *t;
+    const uint8_t *s;
+    if (n == (size_t)0) {
+        return;
+    }
+    if (d == (uint32_t)1) {
+        uint8_t v = dst[w - (size_t)1];
+        uint64_t fill = (uint64_t)v;
+        fill |= fill << (uint64_t)8;
+        fill |= fill << (uint64_t)16;
+        fill |= fill << (uint64_t)32;
+        n8 = n & ~((size_t)7);
+        for (i = (size_t)0; i < n8; i += (size_t)8) {
+            lz_u3_mc_st64(dst + w + i, fill);
+        }
+        for (; i < n; i++) {
+            dst[w + i] = v;
+        }
+        return;
+    }
+    if (d >= (uint32_t)8) {
+        n8 = n & ~((size_t)7);
+        for (i = (size_t)0; i < n8; i += (size_t)8) {
+            lz_u3_mc_st64(dst + w + i,
+                           lz_u3_mc_ld64(dst + w + i - (size_t)d));
+        }
+        lz_u3_mc_tail(dst + w + n8, dst + w + n8 - (size_t)d, n - n8, d);
+        return;
+    }
+    t = dst + w;
+    s = t - (size_t)d;
+    switch (d) {
+    case (uint32_t)2:
+        while (n >= (size_t)2) {
+            lz_u3_mc_st16(t, lz_u3_mc_ld16(s));
+            t += (size_t)2;
+            s += (size_t)2;
+            n -= (size_t)2;
+        }
+        break;
+    case (uint32_t)3:
+        while (n >= (size_t)3) {
+            lz_u3_mc_st16(t, lz_u3_mc_ld16(s));
+            t[(size_t)2] = s[(size_t)2];
+            t += (size_t)3;
+            s += (size_t)3;
+            n -= (size_t)3;
+        }
+        break;
+    case (uint32_t)4:
+        while (n >= (size_t)4) {
+            lz_u3_mc_st32(t, lz_u3_mc_ld32(s));
+            t += (size_t)4;
+            s += (size_t)4;
+            n -= (size_t)4;
+        }
+        break;
+    case (uint32_t)5:
+        while (n >= (size_t)5) {
+            lz_u3_mc_st32(t, lz_u3_mc_ld32(s));
+            t[(size_t)4] = s[(size_t)4];
+            t += (size_t)5;
+            s += (size_t)5;
+            n -= (size_t)5;
+        }
+        break;
+    case (uint32_t)6:
+        while (n >= (size_t)6) {
+            lz_u3_mc_st32(t, lz_u3_mc_ld32(s));
+            lz_u3_mc_st16(t + (size_t)4, lz_u3_mc_ld16(s + (size_t)4));
+            t += (size_t)6;
+            s += (size_t)6;
+            n -= (size_t)6;
+        }
+        break;
+    default:
+        while (n >= (size_t)7) {
+            lz_u3_mc_st32(t, lz_u3_mc_ld32(s));
+            lz_u3_mc_st16(t + (size_t)4, lz_u3_mc_ld16(s + (size_t)4));
+            t[(size_t)6] = s[(size_t)6];
+            t += (size_t)7;
+            s += (size_t)7;
+            n -= (size_t)7;
+        }
+        break;
+    }
+    lz_u3_mc_tail(t, s, n, d);
+}
+
+/* P3-N2 dispatcher: 16B NEON bulk for d>=16 && n>=16, scalar tail/fallback.
+ * Overlap proof (d>=16): chunk [s,s+16) reads [s-d,s-d+16); d>=16 gives
+ * s-d+16<=s, so every source byte sits strictly below its dest chunk:
+ * no intra-chunk overlap; sequential chunks see fully-written history.
+ * Tail (n%16) and all d<16 keep the proven scalar paths above, so the
+ * NEON path is byte-identical by construction. Exact-n: no overrun
+ * (bulk covers only n&~15, tail covers the rest). */
+static void lz_u3_match_copy(uint8_t *dst, size_t w, uint32_t d, size_t n) {
+#if LZ_U3_HAVE_NEON
+    if (d >= (uint32_t)16 && n >= (size_t)16 && lz_u3_neon_ok() != 0) {
+        size_t n16 = n & ~((size_t)15);
+        size_t i;
+        for (i = (size_t)0; i < n16; i += (size_t)16) {
+            vst1q_u8(dst + w + i, vld1q_u8(dst + w + i - (size_t)d));
+        }
+        w += n16;
+        n -= n16;
+    }
+#endif
+    lz_u3_match_copy_scalar(dst, w, d, n);
 }
 
 /* --- footer (S2.5) --- */
@@ -933,35 +1140,27 @@ static uint32_t lz_u6h_rev(uint32_t code, uint32_t len) {
     return r;
 }
 
-/* Peek nbits<=10 LSB-first from lane at bitpos; zero-pads past lane end
- * (S3.4: speculative peek never fails; consume gates below). */
-static uint32_t lz_u6h_peek(const struct lz_u3_lane *lane, uint32_t nbits) {
-    uint32_t b;
-    uint32_t v = (uint32_t)0;
-    size_t avail;
-    if (lane == NULL || lane->p == NULL || nbits > (uint32_t)10) {
-        return (uint32_t)0;
-    }
-    avail = lz_u3_lane_cap(lane);
-    for (b = (uint32_t)0; b < nbits; b++) {
-        size_t pos = lane->bitpos + (size_t)b;
-        uint32_t bit = (uint32_t)0;
-        if (pos < avail) {
-            bit = ((uint32_t)lane->p[pos / (size_t)8] >> (pos % (size_t)8)) &
-                  (uint32_t)1;
-        }
-        v |= bit << b;
-    }
-    return v;
-}
+/* P6-symphoist: lz_u6h_peek folded into lz_u6h_decode_sym_fast below
+ * (sole caller was decode_sym). Peek body preserved verbatim in the
+ * slow branch; fast branch skips the 3 per-byte guards when
+ * byte_off+2 < cap_bytes (all 3 loads provably in-bounds).
+ * Distribution (probe, pinned corpus + alpha-64k x4 levels): 100% of
+ * valid symbols take the fast branch (peek_slow=0, peek_empty=0). */
 
 /* Read nbits<=32 consumed bits LSB-first; all must be in-bounds (fixed
  * header fields; S3.4 equality bitpos==len*8 passes via <= when nbits 0,
  * rejects when bits truly missing). */
 static int lz_u6h_read_bits(struct lz_u3_lane *lane, uint32_t nbits,
                             uint32_t *out) {
-    uint32_t b;
-    uint32_t v = (uint32_t)0;
+    /* P2-bitio: byte-window loads + shift/mask (bounds pre-checked, so
+     * all window bytes are in-bounds; same bits, same verdicts). */
+    size_t pos;
+    size_t byte_off;
+    uint32_t sh;
+    unsigned need;
+    unsigned j;
+    uint64_t w;
+    uint32_t v;
     if (lane == NULL || out == NULL || nbits > (uint32_t)32) {
         return LZ_U3_FAIL;
     }
@@ -972,11 +1171,20 @@ static int lz_u6h_read_bits(struct lz_u3_lane *lane, uint32_t nbits,
     if (lane->bitpos + (size_t)nbits > lz_u3_lane_cap(lane)) {
         return LZ_U3_FAIL;
     }
-    for (b = (uint32_t)0; b < nbits; b++) {
-        size_t pos = lane->bitpos + (size_t)b;
-        uint32_t bit = ((uint32_t)lane->p[pos / (size_t)8] >>
-                        (pos % (size_t)8)) & (uint32_t)1;
-        v |= bit << b;
+    if (nbits == (uint32_t)0) {
+        return LZ_U3_OK;
+    }
+    pos = lane->bitpos;
+    byte_off = pos >> 3;
+    sh = (uint32_t)(pos & (size_t)7);
+    need = (sh + nbits + (uint32_t)7) >> 3;
+    w = (uint64_t)0;
+    for (j = (unsigned)0; j < need; j++) {
+        w |= (uint64_t)lane->p[byte_off + (size_t)j] << (j * (unsigned)8);
+    }
+    v = (uint32_t)(w >> sh);
+    if (nbits < (uint32_t)32) {
+        v &= (((uint32_t)1 << nbits) - (uint32_t)1);
     }
     lane->bitpos += (size_t)nbits;
     *out = v;
@@ -1062,30 +1270,77 @@ static int lz_u6h_build(const uint8_t *lengths, uint32_t nsym, uint32_t maxlen,
     return LZ_U3_OK;
 }
 
-/* Decode one symbol from lane via maxlen-bit table peek; consumes len bits
- * (strict: consumed bits must be in-bounds). */
-static int lz_u6h_decode_sym(struct lz_u3_lane *lane, const uint16_t *tab,
-                             uint32_t maxlen, uint32_t *sym) {
+/* Decode one symbol via maxlen-bit table peek; consumes len bits
+ * (strict: consumed bits must be in-bounds).
+ * P6-symphoist: cached-cap form. p/cap_bits/cap_bytes are snapshotted
+ * once per substream (p/bs_end invariant; only bitpos advances), so
+ * the 2 lane_cap calls + NULL/range re-checks per symbol are gone.
+ * Caller guarantees: tab != NULL, sym != NULL, maxlen in {5,10}
+ * (both substream sites pass stack tables, &v, 5/10 — the old entry
+ * checks were vacuous there). Verdict equivalence vs old decode_sym:
+ * peek==0 when p==NULL (old peek NULL leg) or pos>=cap (old empty
+ * leg; nbits==maxlen!=0); slow branch is the old 3-guard window
+ * verbatim; len/p/cap FAILs fire in the same order with the same
+ * operands (cap_bits == lane_cap bit-for-bit: same NULL/e<p guards,
+ * same (e-p)*8 arithmetic). Bad-bs_end/p!=NULL collapses to the p
+ * FAIL instead of the cap FAIL — same FAIL verdict either way. */
+static int lz_u6h_decode_sym_fast(const uint8_t *p, size_t cap_bits,
+                                  size_t cap_bytes, size_t *bpos,
+                                  const uint16_t *tab, uint32_t maxlen,
+                                  uint32_t *sym) {
+    size_t pos = *bpos;
+    size_t byte_off;
+    uint32_t sh;
+    uint32_t b0;
+    uint32_t b1;
+    uint32_t b2;
+    uint32_t peek;
     uint32_t e;
     uint32_t len;
-    if (lane == NULL || tab == NULL || sym == NULL || maxlen == (uint32_t)0 ||
-        maxlen > (uint32_t)10) {
-        return LZ_U3_FAIL;
+    if (p == NULL || pos >= cap_bits) {
+        peek = (uint32_t)0;
+    } else {
+        byte_off = pos >> 3;
+        sh = (uint32_t)(pos & (size_t)7);
+        if (byte_off + (size_t)2 < cap_bytes) {
+            b0 = (uint32_t)p[byte_off];
+            b1 = (uint32_t)p[byte_off + (size_t)1];
+            b2 = (uint32_t)p[byte_off + (size_t)2];
+        } else {
+            b0 = (byte_off < cap_bytes) ? (uint32_t)p[byte_off] : (uint32_t)0;
+            b1 = (byte_off + (size_t)1 < cap_bytes)
+                     ? (uint32_t)p[byte_off + (size_t)1]
+                     : (uint32_t)0;
+            b2 = (byte_off + (size_t)2 < cap_bytes)
+                     ? (uint32_t)p[byte_off + (size_t)2]
+                     : (uint32_t)0;
+        }
+        peek = (((b0 | (b1 << 8) | (b2 << 16)) >> sh) &
+                (((uint32_t)1 << maxlen) - (uint32_t)1));
     }
-    e = tab[lz_u6h_peek(lane, maxlen)];
+    e = tab[peek];
     len = e >> 8;
     if (len == (uint32_t)0 || len > maxlen) {
         return LZ_U3_FAIL;
     }
-    if (lane->p == NULL) {
+    if (p == NULL) {
         return LZ_U3_FAIL;
     }
-    if (lane->bitpos + (size_t)len > lz_u3_lane_cap(lane)) {
+    if (pos + (size_t)len > cap_bits) {
         return LZ_U3_FAIL;
     }
-    lane->bitpos += (size_t)len;
+    *bpos = pos + (size_t)len;
     *sym = e & (uint32_t)0xFF;
     return LZ_U3_OK;
+}
+
+/* P6-symphoist: write cached bitpos back to lanes (success exit + every
+ * post-snapshot FAIL exit, so lanes always reflect consumed bits). */
+static void lz_u6h_sync_bitpos(struct lz_u3_lanes *lanes, const size_t *bpos) {
+    int k;
+    for (k = 0; k < 8; k++) {
+        lanes->l[k].bitpos = bpos[k];
+    }
 }
 
 /* One HUFFMAN substream (S3.8/Q4): 11x3b meta + 32b bitmap from lane 0,
@@ -1099,6 +1354,12 @@ static int lz_u6h_substream(struct lz_u3_lanes *lanes, uint32_t count,
     uint8_t main_lens[256];
     uint16_t main_tab[1024];
     uint8_t tmp[256];
+    /* P6-symphoist: hoisted per-lane caps (p/bs_end invariant across the
+     * substream; bitpos cached, synced back on every exit below). */
+    const uint8_t *lp[8];
+    size_t cap_bits[8];
+    size_t cap_bytes[8];
+    size_t bpos[8];
     uint32_t bitmap = (uint32_t)0;
     uint32_t used = (uint32_t)0;
     uint32_t maxmeta = (uint32_t)0;
@@ -1107,9 +1368,12 @@ static int lz_u6h_substream(struct lz_u3_lanes *lanes, uint32_t count,
     uint32_t g;
     uint32_t pos;
     uint32_t k;
+    uint32_t li;
+    int sk;
     if (lanes == NULL || out == NULL || count == (uint32_t)0) {
         return LZ_U3_FAIL;
     }
+    li = (uint32_t)0;
     for (i = (uint32_t)0; i < (uint32_t)11; i++) {
         uint32_t v = (uint32_t)0;
         if (lz_u6h_read_bits(&lanes->l[0], (uint32_t)3, &v) != LZ_U3_OK) {
@@ -1141,13 +1405,37 @@ static int lz_u6h_substream(struct lz_u3_lanes *lanes, uint32_t count,
             used += (uint32_t)8;
         }
     }
+    /* P6-symphoist: snapshot after the header reads above (they advanced
+     * l[0].bitpos via read_bits). cap_bits == lane_cap bit-for-bit. */
+    for (sk = 0; sk < 8; sk++) {
+        const uint8_t *sp = lanes->l[sk].p;
+        const uint8_t *se = lanes->l[sk].bs_end;
+        if (sp == NULL || se == NULL || se < sp) {
+            lp[sk] = NULL;
+            cap_bits[sk] = (size_t)0;
+            cap_bytes[sk] = (size_t)0;
+        } else {
+            lp[sk] = sp;
+            cap_bytes[sk] = (size_t)(se - sp);
+            cap_bits[sk] = cap_bytes[sk] * (size_t)8;
+        }
+        bpos[sk] = lanes->l[sk].bitpos;
+    }
     for (i = (uint32_t)0; i < used; i++) {
         uint32_t v = (uint32_t)0;
-        if (lz_u6h_decode_sym(&lanes->l[i % (uint32_t)8], meta_tab,
-                              (uint32_t)5, &v) != LZ_U3_OK) {
+        /* P2-bitio: wrapping lane cursor == i%8, no modulo. */
+        if (lz_u6h_decode_sym_fast(lp[li], cap_bits[li], cap_bytes[li],
+                                   &bpos[li], meta_tab, (uint32_t)5,
+                                   &v) != LZ_U3_OK) {
+            lz_u6h_sync_bitpos(lanes, bpos);
             return LZ_U3_FAIL;
         }
+        li++;
+        if (li == (uint32_t)8) {
+            li = (uint32_t)0;
+        }
         if (v > (uint32_t)10) {
+            lz_u6h_sync_bitpos(lanes, bpos);
             return LZ_U3_FAIL; /* meta syms are lengths 0..10 */
         }
         tmp[i] = (uint8_t)v;
@@ -1170,20 +1458,31 @@ static int lz_u6h_substream(struct lz_u3_lanes *lanes, uint32_t count,
         }
     }
     if (lz_u2_maxlen_ok(maxmain, 0) != LZ_U2_OK) {
+        lz_u6h_sync_bitpos(lanes, bpos);
         return LZ_U3_FAIL; /* main cap 10 (vacuous via meta) */
     }
     if (lz_u6h_build(main_lens, (uint32_t)256, (uint32_t)10, main_tab,
                      (uint32_t)1024) != LZ_U3_OK) {
+        lz_u6h_sync_bitpos(lanes, bpos);
         return LZ_U3_FAIL;
     }
+    li = (uint32_t)0;
     for (i = (uint32_t)0; i < count; i++) {
         uint32_t v = (uint32_t)0;
-        if (lz_u6h_decode_sym(&lanes->l[i % (uint32_t)8], main_tab,
-                              (uint32_t)10, &v) != LZ_U3_OK) {
+        /* P2-bitio: wrapping lane cursor == i%8, no modulo. */
+        if (lz_u6h_decode_sym_fast(lp[li], cap_bits[li], cap_bytes[li],
+                                   &bpos[li], main_tab, (uint32_t)10,
+                                   &v) != LZ_U3_OK) {
+            lz_u6h_sync_bitpos(lanes, bpos);
             return LZ_U3_FAIL;
+        }
+        li++;
+        if (li == (uint32_t)8) {
+            li = (uint32_t)0;
         }
         out[i] = (uint8_t)v;
     }
+    lz_u6h_sync_bitpos(lanes, bpos);
     return LZ_U3_OK;
 }
 
@@ -1481,8 +1780,15 @@ static int lz_u3_match_len(uint32_t sel, uint32_t len_f,
  * (no overread tolerance); R-011 corners accepted, gated RAW-only. */
 static int lz_u3_suffix_bits(struct lz_u3_lane *lane, uint32_t nbits,
                              uint32_t *out) {
-    uint32_t b;
-    uint32_t v = (uint32_t)0;
+    /* P2-bitio: byte-window loads + shift/mask (bounds pre-checked, so
+     * all window bytes are in-bounds; same bits, same verdicts). */
+    size_t pos;
+    size_t byte_off;
+    uint32_t sh;
+    unsigned need;
+    unsigned j;
+    uint64_t w;
+    uint32_t v;
     if (out == NULL) {
         return LZ_U3_FAIL;
     }
@@ -1499,12 +1805,15 @@ static int lz_u3_suffix_bits(struct lz_u3_lane *lane, uint32_t nbits,
     if (lane->bitpos + (size_t)nbits > lz_u3_lane_cap(lane)) {
         return LZ_U3_FAIL;
     }
-    for (b = (uint32_t)0; b < nbits; b++) {
-        size_t pos = lane->bitpos + (size_t)b;
-        uint32_t byte = (uint32_t)lane->p[pos / (size_t)8];
-        uint32_t bit = (byte >> (pos % (size_t)8)) & (uint32_t)1;
-        v |= bit << b;
+    pos = lane->bitpos;
+    byte_off = pos >> 3;
+    sh = (uint32_t)(pos & (size_t)7);
+    need = (sh + nbits + (uint32_t)7) >> 3;
+    w = (uint64_t)0;
+    for (j = (unsigned)0; j < need; j++) {
+        w |= (uint64_t)lane->p[byte_off + (size_t)j] << (j * (unsigned)8);
     }
+    v = (uint32_t)(w >> sh) & (((uint32_t)1 << nbits) - (uint32_t)1);
     lane->bitpos += (size_t)nbits;
     *out = v;
     return LZ_U3_OK;
@@ -1564,6 +1873,14 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
     uint32_t dist_used = (uint32_t)0;  /* owned by suffix fetch (D-B3) */
     size_t wblk = (size_t)0;
     uint8_t fb = (uint8_t)0;
+    /* P2-bitio: hoisted tok/lit views (ss immutable in replay; the
+     * fallback legs preserve ss_byte FAILs bit-for-bit). */
+    uint32_t tok_mode = ss[0].mode;
+    const uint8_t *tok_p = ss[0].p;
+    uint8_t tok_fill = ss[0].fill;
+    uint32_t lit_mode = ss[2].mode;
+    const uint8_t *lit_p = ss[2].p;
+    uint8_t lit_fill = ss[2].fill;
     *out_n = (size_t)0;
     *cap_hit = 0;
     /* u6b D-B5: first-byte pre-emit (S4.1/Q18). Entry pos 1, literals[0]
@@ -1606,7 +1923,12 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
         if (wblk == (size_t)ds) {
             return LZ_U3_FAIL;
         }
-        if (lz_u3_ss_byte(&ss[0], ti, &t) != LZ_U3_OK) {
+        /* P2-bitio: direct tok fetch (ti<n by loop bound). */
+        if (tok_mode == (uint32_t)1) {
+            t = tok_fill;
+        } else if (tok_p != NULL) {
+            t = tok_p[ti];
+        } else if (lz_u3_ss_byte(&ss[0], ti, &t) != LZ_U3_OK) {
             return LZ_U3_FAIL;
         }
         lit_f = ((uint32_t)t >> 6) & (uint32_t)3;
@@ -1655,25 +1977,49 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
             return LZ_U3_OK; /* u6k EXP: cap-stop S4.5 prefix */
         }
         if (take > room - wblk) {
+            size_t nn = room - wblk;
             size_t k;
-            for (k = (size_t)0; k < room - wblk; k++) {
-                uint8_t lb = (uint8_t)0;
-                if (lz_u3_ss_byte(&ss[2], lit_used + (uint32_t)k, &lb) !=
-                    LZ_U3_OK) {
-                    return LZ_U3_FAIL;
+            /* P2-bitio: direct lit copy (bounds verified above). */
+            if (lit_mode == (uint32_t)1) {
+                for (k = (size_t)0; k < nn; k++) {
+                    dst[w_tot + wblk + k] = lit_fill;
                 }
-                dst[w_tot + wblk + k] = lb;
+            } else if (lit_p != NULL) {
+                for (k = (size_t)0; k < nn; k++) {
+                    dst[w_tot + wblk + k] =
+                        lit_p[lit_used + (uint32_t)k];
+                }
+            } else {
+                for (k = (size_t)0; k < nn; k++) {
+                    uint8_t lb = (uint8_t)0;
+                    if (lz_u3_ss_byte(&ss[2], lit_used + (uint32_t)k, &lb) !=
+                        LZ_U3_OK) {
+                        return LZ_U3_FAIL;
+                    }
+                    dst[w_tot + wblk + k] = lb;
+                }
             }
             *out_n = room;
             *cap_hit = 1;
             return LZ_U3_OK;
         }
-        for (i = (uint32_t)0; i < take; i++) {
-            uint8_t lb = (uint8_t)0;
-            if (lz_u3_ss_byte(&ss[2], lit_used + i, &lb) != LZ_U3_OK) {
-                return LZ_U3_FAIL;
+        /* P2-bitio: direct lit copy (bounds verified above). */
+        if (lit_mode == (uint32_t)1) {
+            for (i = (uint32_t)0; i < take; i++) {
+                dst[w_tot + wblk + (size_t)i] = lit_fill;
             }
-            dst[w_tot + wblk + (size_t)i] = lb;
+        } else if (lit_p != NULL) {
+            for (i = (uint32_t)0; i < take; i++) {
+                dst[w_tot + wblk + (size_t)i] = lit_p[lit_used + i];
+            }
+        } else {
+            for (i = (uint32_t)0; i < take; i++) {
+                uint8_t lb = (uint8_t)0;
+                if (lz_u3_ss_byte(&ss[2], lit_used + i, &lb) != LZ_U3_OK) {
+                    return LZ_U3_FAIL;
+                }
+                dst[w_tot + wblk + (size_t)i] = lb;
+            }
         }
         lit_used += (uint32_t)take;
         wblk += take;

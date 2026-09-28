@@ -25,15 +25,18 @@ API is `include/lzmesh.h`. Until lanes land, `make` fails loudly with
 | `selftest` | battery framework sanity (`battery.py --selftest`) | python3 only — always runnable, no codec |
 | `smoke`    | fast battery tier vs `port_cli` | built `port_cli` (+ `oracle_probe` from pinned in-tree source) |
 | `full`     | full 77-seed tier, selectors `e00,e01,e05,e09` | built `port_cli`, `ORACLE_LIB`, `oracle_probe` |
-| `clean`    | removes objects, lib, CLI, `results/`, `tmp-selftest-*` | — |
+| `pgo`      | PGO rebuild: lib + `port_cli` + `bench` under `build-pgo/` | pinned corpus + `llvm-profdata` (via `xcrun`) |
+| `pgo-unit` | unit tests built against the PGO lib, then run | `pgo` outputs |
+| `clean`    | removes objects, lib, CLI, `results/`, `tmp-selftest-*`, `build-pgo/` | — |
 
 Variables: `CC`, `CFLAGS`, `AR` (toolchain); `BATTERY` (default
-`tests/battery/battery.py`); `ORACLE` (default `oracle_probe`, a build
-of the pinned in-tree `tests/battery/oracle_probe.c` found via `PATH` —
-override with `ORACLE=`);
+`tests/battery/battery.py`); `ORACLE` (default
+`../tmp/portrepo/oracle_probe`, the scratch prebuilt — override with `ORACLE=`);
 `PORT` (default `./port_cli`); `ORACLE_LIB` (Apple build under test,
-default `/usr/lib/libcompression.dylib`, consumed by `oracle_probe` at
-run time — see `docs/TESTING.md`).
+consumed by `oracle_probe` at run time — see `docs/TESTING.md`);
+`PGODIR` (default `build-pgo`), `PGO_TRAIN_REPS` (default 3),
+`PGO_L0_BOOST_REPS` (default 200),
+`PROFDATA` (default: `xcrun --find llvm-profdata`).
 
 There is deliberately no `oracle_probe` target here: build the adapter
 explicitly from `tests/battery/oracle_probe.c` when needed, and this
@@ -81,8 +84,8 @@ to lane scratch, never into this tree.
 
 The single unit gap on sim/device slices (34 not 35) is TEST-ONLY:
 `test_m19_cli_cap` Part B uses `system()`, unavailable on iOS/tvOS
-SDKs. The library is unaffected. iOS build notes are not shipped in
-this tree.
+SDKs. The library is unaffected. iOS notes:
+`../tmp/portrepo/ios/NOTES.md` (stayed in tmp scratch).
 
 ## OPEN
 

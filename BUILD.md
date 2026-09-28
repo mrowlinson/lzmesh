@@ -14,6 +14,35 @@ make            # liblzmesh.a + port_cli (needs lane sources in src/)
 Flags: `-O2 -std=c11 -Wall -Wextra`, zero warnings required.
 Single Makefile + direct `cc` (no CMake; see DECISIONS.md D2).
 
+## PGO (profile-guided optimization, opt-in)
+
+```
+make pgo        # profile-generate -> train -> profile-use rebuild
+make pgo-unit   # unit tests built against the PGO lib, then run
+```
+
+Build-only: identical sources, no codec change. Pipeline (all outputs
+under `build-pgo/`, default tree untouched): instrumented build, train
+runs = bench binary over the pinned corpus (`bench/corpus/*.bin`,
+`-n 3` all levels + `-n 200 -l 0` L0-boost, deterministic),
+`llvm-profdata merge`, profile-use rebuild to `build-pgo/liblzmesh.a`
++ `build-pgo/port_cli` + `build-pgo/bench`.
+Knobs: `PGODIR=` (default `build-pgo`), `PGO_TRAIN_REPS=` (default 3),
+`PGO_L0_BOOST_REPS=` (default 200), `PROFDATA=` (default:
+`xcrun --find llvm-profdata`).
+
+The L0-boost run exists because L0-dec is ~1% of a uniform profile
+(sub-ms vs ~100ms L9-enc); without it PGO regresses L0-dec ~9% (W19).
+The boost restores L0 parity with no other cell hurt (measured n=35).
+
+Expect exactly one warning: `port_cli.c` has no profile data (training
+drives `bench`, not the CLI) — harmless, kept visible on purpose.
+
+PGO must not change output bytes: before trusting any PGO binary, run
+the full battery against `build-pgo/port_cli` (0 NEW vs the normal
+build) plus `make pgo-unit`. Measured uplift (n=35, this tree): see
+`docs/PERF.md`.
+
 ## Test gates (in order)
 
 ```

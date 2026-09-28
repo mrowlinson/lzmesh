@@ -1,6 +1,7 @@
 # Vendored battery framework
 
-Source: frozen scaffold copy. Pinned 2026-09-17. Files:
+Source: `LZMESH-cleanroom/tmp/stage6scaf/battery/` (frozen scaffold).
+Pinned 2026-09-17. Files:
 
 | File | sha256 | Lines |
 |---|---|---|

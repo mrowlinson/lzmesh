@@ -10,8 +10,8 @@ values.
 
 Prerequisite: every gate in `RELEASE-CHECKLIST.md` passes.
 
-Candidate snapshots (decoder-complete candidate 2026-09-19, frozen
-for review until re-cut) are NOT releases: they freeze the tree +
+Candidate snapshots (decoder-complete candidate 2026-09-19,
+`../tmp/portrepo/release/MANIFEST.md`, scratch until re-cut) are NOT releases: they freeze the tree +
 proof matrix for review while §1 identity items stay coordinator-OPEN.
 A candidate claims no version, tag, host, or license, and MUST NOT be
 published as a release. Checklist status at candidacy (record only;
@@ -84,12 +84,12 @@ decides; if signed, use `git tag -s` and record the key policy in
    identities, publication URL) as an entry in `docs/CLEANROOM-LOG.md`
    or `DECISIONS.md`, per coordinator direction.
 
-## OPEN summary (all require coordinator decisions)
+## OPEN summary (coordinator decisions; resolved items marked)
 
 - Version number and versioning scheme.
 - Tag name and signed/unsigned tag policy.
 - Hosting service, repository name, and publication location.
-- License choice (blocks gate 1; DECISIONS.md D10/O1).
+- License choice: RESOLVED 2026-09-28 = 0BSD (D10/O1); gate 1 unblocked.
 - Upload artifact list (source tarball? prebuilt lib? neither?).
 - Verdict-threshold confirmation (O7), bench scope (O5), API shape (O3),
   level representation (O4), lane fill model (O6), spec freeze hash (O2)
