@@ -1,0 +1,2 @@
+gated-bench start mode=single runs=5 reps=7 levels=all ncpu=10 pin=taskpolicy-t0l0 base=./bench/bench new= force=0 fakeload=none
+run 1: REFUSED load1=806.49 >= 2x10 (EGATED=3); partial results kept under ../tmp/p8-benchharden/refusal

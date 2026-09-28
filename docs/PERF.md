@@ -23,6 +23,12 @@ coordinator.
   commit (provenance row below). No Apple version-specific performance
   claims beyond the recorded oracle runs (none: oracle column not run
   in baseline scope).
+- Gated protocol (lane p8-benchharden): all comparisons after the
+  baseline go through `bench/run_gated.sh` (`make bench-gated` /
+  `make bench-ab`) and are compared with `bench/cmp.py` — load gate
+  (refuse at load1 ≥ 2×ncpu, exit 3), P-core pin, interleaved A/B,
+  per-run loadavg `#` headers, exact SEPARATED/OVERLAP rule with
+  one-doubling-then-NOISE policy. See `bench/GATED-PROTOCOL.md`.
 
 ## Results — baseline 2026-09-28
 

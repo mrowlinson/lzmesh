@@ -89,6 +89,33 @@ bench: $(LIB) $(BENCH)
 		echo "no corpus: run 'make bench-corpus' first"; exit 1; fi
 	./$(BENCH) -n $(BENCH_REPS) $(CORPUS)
 
+# Load-gated bench (p8-benchharden; see bench/GATED-PROTOCOL.md):
+# refuse-and-log when load1 >= 2x ncpu (exit 3), best-effort P-core
+# pin via taskpolicy, provenance `#` headers in every TSV.
+#   bench-gated  single-side baseline, n = BENCH_RUNS x BENCH_REPS (35)
+#   bench-ab     interleaved base/new compare; needs BASE= NEW= bench bins
+# Knobs: BENCH_RUNS=5 BENCH_REPS=7 BENCH_LEVELS="" BENCH_MAXLOAD_MULT=2
+#   BENCH_NOPIN=1 BENCH_FORCE=1 (override, schema smoke only, never quoted)
+BENCH_RUNS ?= 5
+BENCH_LEVELS ?=
+bench-gated: $(LIB) $(BENCH)
+	@if [ -z "$(CORPUS)" ]; then \
+		echo "no corpus: run 'make bench-corpus' first"; exit 1; fi
+	BENCH_RUNS=$(BENCH_RUNS) BENCH_REPS=$(BENCH_REPS) BENCH_LEVELS="$(BENCH_LEVELS)" \
+	sh bench/run_gated.sh results/gated ./$(BENCH) $(CORPUS)
+
+bench-ab: $(LIB) $(BENCH)
+	@if [ -z "$(BASE)" -o -z "$(NEW)" ]; then \
+		echo "usage: make bench-ab BASE=<base-bench> NEW=<new-bench>"; exit 2; fi
+	@if [ -z "$(CORPUS)" ]; then \
+		echo "no corpus: run 'make bench-corpus' first"; exit 1; fi
+	BENCH_RUNS=$(BENCH_RUNS) BENCH_REPS=$(BENCH_REPS) BENCH_LEVELS="$(BENCH_LEVELS)" \
+	sh bench/run_gated.sh --ab results/gated-ab $(BASE) $(NEW) $(CORPUS)
+
+# Hermetic self-tests for run_gated.sh + cmp.py (stub binaries, no load).
+bench-gated-selftest:
+	sh bench/selftest_gated.sh
+
 bench-corpus:
 	python3 bench/mkcorpus.py bench/corpus
 	python3 bench/mkcorpus.py --check bench/corpus
@@ -171,4 +198,4 @@ clean:
 	rm -f $(OBJ) src/port_cli.o $(LIB) port_cli $(UNIT_BIN) $(BENCH)
 	rm -rf results tmp-selftest-* $(PGODIR)
 
-.PHONY: all selftest smoke full unit bench bench-corpus pgo pgo-unit clean
+.PHONY: all selftest smoke full unit bench bench-gated bench-ab bench-gated-selftest bench-corpus pgo pgo-unit clean

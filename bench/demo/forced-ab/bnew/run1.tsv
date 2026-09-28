@@ -1,0 +1,6 @@
+# gated-bench v1 2026-09-28T20:48:44Z
+# bin ./bench/bench
+# loadavg 804.53 898.62 804.68 ncpu 10 pin taskpolicy-t0l0
+# reps 1 levels 0 run 1-of-2
+zeros-64k.bin	0	enc	65536	79	66000
+zeros-64k.bin	0	dec	79	65536	2000

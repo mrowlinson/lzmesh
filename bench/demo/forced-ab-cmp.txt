@@ -1,0 +1,34 @@
+base: runs=2 load1 804.53-804.81 ncpu=10 pin=taskpolicy-t0l0 bin=./bench/bench
+opt : runs=2 load1 804.53-804.81 ncpu=10 pin=taskpolicy-t0l0 bin=./bench/bench
+base cells=2 opt cells=2
+--- text-256k.bin enc ---
+  L0: missing
+  L1: missing
+  L5: missing
+  L9: missing
+--- text-256k.bin dec ---
+  L0: missing
+  L1: missing
+  L5: missing
+  L9: missing
+--- mixed-128k.bin enc ---
+  L0: missing
+  L1: missing
+  L5: missing
+  L9: missing
+--- mixed-128k.bin dec ---
+  L0: missing
+  L1: missing
+  L5: missing
+  L9: missing
+--- zeros-64k.bin enc ---
+  L0: base 947.19 (935.71-958.67) opt 939.90 (934.25-945.56) uplift -0.8% n=2/2 OVERLAP
+  L1: missing
+  L5: missing
+  L9: missing
+--- zeros-64k.bin dec ---
+  L0: base 46875.00 (34375.00-59375.00) opt 31250.00 (31250.00-31250.00) uplift -33.3% n=2/2 SEPARATED(opt slower)
+  L1: missing
+  L5: missing
+  L9: missing
+verdicts: 1 SEPARATED, 1 OVERLAP

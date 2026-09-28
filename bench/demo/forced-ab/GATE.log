@@ -1,0 +1,10 @@
+gated-bench start mode=AB-interleaved runs=2 reps=1 levels=0 ncpu=10 pin=taskpolicy-t0l0 base=./bench/bench new=./bench/bench force=1 fakeload=none
+run 1: LOAD 804.53/898.62/804.68 ncpu=10 thr=20 TRIPPED but BENCH_FORCE=1 -> OVERRIDE (schema smoke, not a measurement)
+run 1: bench exit=0 rows=2
+run 1: LOAD 804.53/898.62/804.68 ncpu=10 thr=20 TRIPPED but BENCH_FORCE=1 -> OVERRIDE (schema smoke, not a measurement)
+run 1: bench exit=0 rows=2
+run 2: LOAD 804.81/897.12/804.70 ncpu=10 thr=20 TRIPPED but BENCH_FORCE=1 -> OVERRIDE (schema smoke, not a measurement)
+run 2: bench exit=0 rows=2
+run 2: LOAD 804.81/897.12/804.70 ncpu=10 thr=20 TRIPPED but BENCH_FORCE=1 -> OVERRIDE (schema smoke, not a measurement)
+run 2: bench exit=0 rows=2
+gated-bench DONE runs=2

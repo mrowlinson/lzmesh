@@ -30,6 +30,12 @@ recorded baseline.)
 - `make bench` — build lib + harness, run 7 reps/file/level/op.
 - `make bench BENCH_REPS=1` — quick smoke (still verifies roundtrips).
 - `make bench-corpus` — regenerate + `--check` (fails on drift).
+- `make bench-gated` — load-gated baseline via `run_gated.sh`
+  (refuse-and-log at load1 ≥ 2×ncpu, exit 3; P-core pin; `#`
+  provenance headers). `make bench-ab BASE= NEW=` for interleaved
+  A/B compares, `make bench-gated-selftest` for the hermetic
+  self-tests. Full policy: `GATED-PROTOCOL.md`; comparison tool:
+  `cmp.py` (median + bands + SEPARATED/OVERLAP verdicts).
 
 Throughput convention: encode MiB/s over input bytes, decode MiB/s over
 decoded (output) bytes. Aggregation (median/p10-p90 over samples) is

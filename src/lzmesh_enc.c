@@ -126,7 +126,7 @@ size_t lzmesh_u2_table_bytes(unsigned hb, int level) {
 
 void lzmesh_u2_init(lzmesh_u2_finder *f, uint32_t *big, uint32_t *small,
                     unsigned hb, int level) {
-    size_t n, i;
+    size_t n;
     if (f == NULL || big == NULL || hb == 0 || hb > 21)
         return;
     f->big = big;
@@ -134,11 +134,11 @@ void lzmesh_u2_init(lzmesh_u2_finder *f, uint32_t *big, uint32_t *small,
     f->hb = hb;
     f->level = level;
     n = (size_t)1 << hb;
-    for (i = 0; i < n; i++)
-        big[i] = LZMESH_U2_EMPTY;
+    /* P8-T2: EMPTY is all-1 bits; memset-class fill, same bytes/bounds. */
+    memset(big, 0xFF, n * sizeof *big);
     if (f->small != NULL)
-        for (i = 0; i < (size_t)LZMESH_U2_H3SIZE; i++)
-            f->small[i] = LZMESH_U2_EMPTY;
+        memset(f->small, 0xFF,
+               (size_t)LZMESH_U2_H3SIZE * sizeof *f->small);
 }
 
 /* P5-W3 word loads: unaligned-safe LE primitives. memcpy is the
@@ -12481,9 +12481,8 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
     lzmesh_i5_mode_init(&i5md);
     uint32_t f3arr[LZMESH_U2_H3SIZE]; /* F3 skip record (per-call) */
     { /* tables are per-call too; init all-EMPTY */
-        unsigned k;
-        for (k = 0u; k < (unsigned)LZMESH_U2_H3SIZE; k++)
-            f3arr[k] = LZMESH_U2_EMPTY;
+        /* P8-T2: memset-class fill, same bytes/bounds. */
+        memset(f3arr, 0xFF, sizeof f3arr);
         i5md.f3skip = f3arr;
     }
     unsigned char *i5v = NULL; /* I5: visited bitmap (L9 only) */
@@ -12515,7 +12514,6 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
         }
     }
     if (lzmesh_i5_on(level)) { /* I5: visited + take-m bitmaps */
-        size_t qn;
         i5v = (unsigned char *)calloc(size > 0u ? size : 1u, 1u);
         i5m = (unsigned char *)calloc(size > 0u ? size : 1u, 1u);
         i5ts = (unsigned char *)calloc(size > 0u ? size : 1u, 1u);
@@ -12533,8 +12531,8 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
             return 0;
         }
         /* calloc zeroes; chain EMPTY is 0xFFFFFFFF: fix up. */
-        for (qn = 0u; qn < size; qn++)
-            qlink[qn] = LZMESH_U2_EMPTY;
+        /* P8-T2: memset-class fill, same bytes/bounds. */
+        memset(qlink, 0xFF, size * sizeof *qlink);
         i5md.qlink = qlink;
         i5md.ycon = ysp;
         i5md.ywin = ysp + (size > 0u ? size : 1u);
@@ -12542,14 +12540,14 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
     }
     if (level == 1) { /* S2: MX-slot chains (head 2^hb). */
         size_t nh = (size_t)1u << hb;
-        for (j = 0u; (size_t)j < nh; j++)
-            head[j] = -1;
+        /* P8-T2: -1 is all-1 bits; memset-class fill, same bytes/bounds. */
+        memset(head, 0xFF, nh * sizeof *head);
     } else {
         size_t nbig = (size_t)1u << hb;
-        for (j = 0u; (size_t)j < nbig; j++)
-            big[j] = LZMESH_U2_EMPTY;
-        for (j = 0u; j < (unsigned)LZMESH_U2_H3SIZE; j++)
-            small[j] = LZMESH_U2_EMPTY;
+        /* P8-T2: memset-class fills, same bytes/bounds. */
+        memset(big, 0xFF, nbig * sizeof *big);
+        memset(small, 0xFF,
+               (size_t)LZMESH_U2_H3SIZE * sizeof *small);
     }
     /* H1: pos0 init-stored (B0b 18/18 take with no prior match). */
     if (lzmesh_i5_on(level)) /* I5: h2/h3 only, no h1 */
