@@ -21,8 +21,8 @@ coordinator.
   0 failures across the baseline.
 - Each run records: date, host, compiler + flags, corpus hash, lane
   commit (provenance row below). No Apple version-specific performance
-  claims beyond the recorded oracle runs (none: oracle column not run
-  in baseline scope).
+  claims beyond the recorded oracle runs (none in baseline scope;
+  since measured on Air — see the Oracle note below the tables).
 - Gated protocol (lane p8-benchharden): all comparisons after the
   baseline go through `bench/run_gated.sh` (`make bench-gated` /
   `make bench-ab`) and are compared with `bench/cmp.py` — load gate
@@ -44,21 +44,35 @@ coordinator.
 
 | Corpus | Level 0 | Level 1 | Level 5 | Level 9 | Oracle (27 build) |
 |--------|---------|---------|---------|---------|-------------------|
-| text-256k | 87.35 (84.15–89.09) | 118.15 (114.78–122.19) | 125.06 (123.82–128.87) | 124.63 (79.16–130.21) | not run |
-| mixed-128k | 85.56 (82.45–87.84) | 202.59 (190.55–209.03) | 233.64 (214.04–243.66) | 194.10 (184.91–202.27) | not run |
-| zeros-64k | 1736.11 (1562.50–1838.24) | 612.75 (543.48–644.33) | 618.81 (538.79–637.76) | 618.81 (553.10–644.33) | not run |
+| text-256k | 87.35 (84.15–89.09) | 118.15 (114.78–122.19) | 125.06 (123.82–128.87) | 124.63 (79.16–130.21) | L0 75.77 (74.66–76.94) / L1 82.90 (81.72–83.99) / L5 84.21 (82.06–85.63) / L9 84.07 (77.69–85.40) |
+| mixed-128k | 85.56 (82.45–87.84) | 202.59 (190.55–209.03) | 233.64 (214.04–243.66) | 194.10 (184.91–202.27) | L0 44.03 (43.04–44.98) / L1 50.17 (49.08–50.93) / L5 50.75 (49.47–51.46) / L9 50.65 (47.13–52.09) |
+| zeros-64k | 1736.11 (1562.50–1838.24) | 612.75 (543.48–644.33) | 618.81 (538.79–637.76) | 618.81 (553.10–644.33) | L0 28.13 (27.79–28.93) / L1 28.02 (27.62–28.92) / L5 28.10 (27.55–29.03) / L9 28.10 (27.53–28.33) |
 
 ### Encode size (bytes out per corpus input; stable across all 35 reps)
 
 | Corpus | Level 0 | Level 1 | Level 5 | Level 9 | Oracle (27 build) |
 |--------|---------|---------|---------|---------|-------------------|
-| text-256k (262,144 B) | 138269 | 82232 | 79704 | 79169 | not run |
-| mixed-128k (131,072 B) | 87875 | 34181 | 32799 | 32708 | not run |
-| zeros-64k (65,536 B) | 79 | 27 | 27 | 27 | not run |
+| text-256k (262,144 B) | 138269 | 82232 | 79704 | 79169 | L0 138269 / L1 82232 / L5 79704 / L9 79169 |
+| mixed-128k (131,072 B) | 87875 | 34181 | 32799 | 32708 | L0 87875 / L1 34181 / L5 32796 / L9 32707 |
+| zeros-64k (65,536 B) | 79 | 27 | 27 | 27 | L0 79 / L1 27 / L5 27 / L9 27 |
 
-Oracle columns read "not run": baseline scope is port-only; no oracle
-harness exists in `bench/` (a black-box oracle-timing mode would be new
-scope, not a fill-in).
+Oracle columns (measured after baseline scope, on Air): Apple decode
+medians via `bench/oracle-bench.py` (`ORACLE_PROBE` over system
+libcompression, macOS 27.0.1, MacBookAir M1, n=35, tree 7164e869),
+quoted exactly from `tmp/verify-p10-air/p10-readme/cmp-port-vs-apple.txt`
+on e43e05db; Apple sizes are that run's stable `out_bytes` (identical
+in all 5 runs) from the same tree's `gated-apple/run{1..5}.tsv`.
+METHOD ASYMMETRY (per `port/README.md` ## Performance, undiluted):
+the port is timed in-process while every Apple sample pays a full
+stdio-pipe spawn (fork+exec+dlopen+pipes, ~2–4 ms), so Apple
+in-process ≥ quoted, always — "Apple faster" cells are conservative
+claims, "port faster" cells carry no claim. Cross-host caution: the
+port cells above are the M1 Max baseline, the oracle cells are Air —
+for same-box port-vs-Apple (including the Apple encode medians not
+repeated here) use `port/README.md` ## Performance. Byte note: Apple
+bytes == port bytes on 9/12 cells; the 3 mixed-128k L1/L5/L9 diffs are
+pre-existing (sizes within 3 B; every output self-roundtrips and
+cross-decodes OK).
 
 ## Provenance — baseline run
 
@@ -84,7 +98,128 @@ scope, not a fill-in).
   median is unaffected (4 of 5 runs agree); the p10–p90 bands keep the
   excursion visible instead of hiding it.
 
+## Results — P9 Air pins 2026-09-28 (T2 measured, W7 held)
+
+Gated A/B on MacBookAir (M1, ncpu=8, clang 16.0.0) per
+`bench/GATED-PROTOCOL.md`: interleaved A/B, P-core pin
+`taskpolicy-t0l0`, load gate, n=35 then one-doubling to n=70;
+every verdict below quotes n=70. 0 gate refusals on all runs.
+Docs-only record: the P9 merge (2b9b9b2a) carried an EMPTY port/
+diff, so these pins describe already-landed code; no codec change
+rides with this section.
+
+### T2 (shipped P8): CONFIRMED encode speedup, 7 SEPARATED
+
+Landed-T2 (9661aafe) vs pre-T2 (26339400); src/ diff ONLY
+lzmesh_enc.c; byte-ident 12/12. n=35 agrees cell-for-cell
+(same 7 SEP, same signs), so the gains are real, not wiggles.
+All decode cells OVERLAP (encode-only change); zeros cells all
++0.0% OVERLAP (timer floor).
+
+Headline enc uplifts (opt vs base, n=70): text L1 +4.2 /
+L5 +2.5 / L9 +11.6; mixed L1 +9.5 / L5 +6.8 / L9 +26.7 — all
+SEPARATED (opt faster).
+
+CAVEAT: mixed-L0 enc is SEPARATED SLOWER at -2.2%, stable at
+both n (-2.4% at n=35). Accepted as-is (7 faster incl +26.7%
+vs 1 slower -2.2%); bedded for a future memset-shape revisit.
+
+Full n=70 table, quoted verbatim from lane-4 scratch
+`tmp/verify-p9-air/p9-t2confirm/cmp-n70.txt`:
+
+```
+base: runs=10 load1 2.93-3.31 ncpu=8 pin=taskpolicy-t0l0 bin=/tmp/p9t2/base/port/bench/bench
+opt : runs=10 load1 2.93-3.31 ncpu=8 pin=taskpolicy-t0l0 bin=/tmp/p9t2/new/port/bench/bench
+base cells=24 opt cells=24
+--- text-256k.bin enc ---
+  L0: base 102.23 (101.67-102.59) opt 102.92 (101.13-103.35) uplift +0.7% n=70/70 OVERLAP
+  L1: base 13.61 (13.39-13.71) opt 14.18 (14.02-14.35) uplift +4.2% n=70/70 SEPARATED(opt faster)
+  L5: base 8.95 (8.79-8.99) opt 9.18 (9.00-9.19) uplift +2.5% n=70/70 SEPARATED(opt faster)
+  L9: base 4.75 (4.65-4.80) opt 5.30 (5.19-5.32) uplift +11.6% n=70/70 SEPARATED(opt faster)
+--- text-256k.bin dec ---
+  L0: base 431.03 (430.29-436.30) opt 430.29 (430.29-435.54) uplift -0.2% n=70/70 OVERLAP
+  L1: base 222.72 (218.70-223.41) opt 221.63 (217.96-222.42) uplift -0.5% n=70/70 OVERLAP
+  L5: base 227.89 (224.22-228.52) opt 227.07 (223.41-227.89) uplift -0.4% n=70/70 OVERLAP
+  L9: base 230.20 (224.78-231.05) opt 229.36 (225.02-230.20) uplift -0.4% n=70/70 OVERLAP
+--- mixed-128k.bin enc ---
+  L0: base 44.82 (44.36-44.93) opt 43.83 (42.25-44.00) uplift -2.2% n=70/70 SEPARATED(opt slower)
+  L1: base 16.85 (16.73-16.98) opt 18.46 (18.18-18.53) uplift +9.5% n=70/70 SEPARATED(opt faster)
+  L5: base 12.28 (12.03-12.41) opt 13.12 (12.88-13.20) uplift +6.8% n=70/70 SEPARATED(opt faster)
+  L9: base 5.22 (5.14-5.31) opt 6.61 (6.48-6.65) uplift +26.7% n=70/70 SEPARATED(opt faster)
+--- mixed-128k.bin dec ---
+  L0: base 435.54 (419.46-446.43) opt 429.55 (416.39-442.01) uplift -1.4% n=70/70 OVERLAP
+  L1: base 471.70 (444.84-482.63) opt 468.16 (443.26-480.77) uplift -0.7% n=70/70 OVERLAP
+  L5: base 514.40 (488.09-534.19) opt 516.53 (486.38-531.91) uplift +0.4% n=70/70 OVERLAP
+  L9: base 462.96 (438.60-479.11) opt 465.55 (440.14-478.93) uplift +0.6% n=70/70 OVERLAP
+--- zeros-64k.bin enc ---
+  L0: base 1008.06 (992.06-1024.59) opt 1008.06 (990.51-1024.59) uplift +0.0% n=70/70 OVERLAP
+  L1: base 1524.39 (1488.10-1524.39) opt 1524.39 (1488.10-1524.39) uplift +0.0% n=70/70 OVERLAP
+  L5: base 1524.39 (1488.10-1524.39) opt 1524.39 (1488.10-1524.39) uplift +0.0% n=70/70 OVERLAP
+  L9: base 1524.39 (1488.10-1524.39) opt 1524.39 (1488.10-1524.39) uplift +0.0% n=70/70 OVERLAP
+--- zeros-64k.bin dec ---
+  L0: base 62500.00 (62500.00-62500.00) opt 62500.00 (62500.00-62500.00) uplift +0.0% n=68/69 OVERLAP
+  L1: base 62500.00 (31250.00-62500.00) opt 62500.00 (31250.00-62500.00) uplift +0.0% n=70/70 OVERLAP
+  L5: base 62500.00 (31250.00-62500.00) opt 62500.00 (31250.00-62500.00) uplift +0.0% n=70/70 OVERLAP
+  L9: base 62500.00 (31250.00-62500.00) opt 62500.00 (31250.00-62500.00) uplift +0.0% n=70/70 OVERLAP
+verdicts: 7 SEPARATED, 17 OVERLAP
+```
+
+### W7: corpus NOISE, HELD as bed (not shipped)
+
+W7 ON/OFF (9661aafe vs 9661aafe + W7 enc patch, scratch-build
+only; W7 code never landed — patch kept at
+`tmp/verify-p9-air/p9-w7/w7_enc.patch`). Pinned corpus: 0/24
+SEPARATED at n=70 (all OVERLAP); n=35's 2 marginal SEPARATED
+cells (mixed-L0 enc +2.5% faster, mixed-L5 enc -0.9% slower)
+both dissolved to OVERLAP at n=70 — textbook noise proof.
+Headline enc: text-L5 +0.2% OVERLAP, mixed-L5 -0.7% OVERLAP.
+All decode cells OVERLAP (W7 is encode-only by construction).
+
+Owned-heavy bed input (`ownedheavy.bin`, `b'A'*262143+b'B'`,
+md5 `e7ffc8483b310817d71dee1ba7a99c65`): enc L1/L5/L9
+SEPARATED opt-faster +506.5 / +562.7 / +562.9% (~6.6x),
+byte-identical outputs 16/16. Quoted verbatim from
+`tmp/verify-p9-air/p9-w7/cmp-ownedheavy-n70.txt`:
+
+```
+--- ownedheavy.bin enc ---
+  L0: base 269.11 (259.98-269.98) opt 269.40 (268.53-270.27) uplift +0.1% n=70/70 OVERLAP
+  L1: base 16.87 (16.28-16.90) opt 102.33 (101.95-102.88) uplift +506.5% n=70/70 SEPARATED(opt faster)
+  L5: base 17.17 (16.52-17.19) opt 113.79 (113.48-114.37) uplift +562.7% n=70/70 SEPARATED(opt faster)
+  L9: base 17.18 (17.14-17.19) opt 113.87 (113.58-114.58) uplift +562.9% n=70/70 SEPARATED(opt faster)
+--- ownedheavy.bin dec ---
+  L0: base 4166.67 (3888.76-4310.34) opt 4166.67 (4166.67-4310.34) uplift +0.0% n=70/70 OVERLAP
+  L1: base 62500.00 (50000.00-62500.00) opt 62500.00 (50000.00-62500.00) uplift +0.0% n=70/70 OVERLAP
+  L5: base 62500.00 (50000.00-62500.00) opt 62500.00 (50000.00-62500.00) uplift +0.0% n=70/70 OVERLAP
+  L9: base 62500.00 (50000.00-62500.00) opt 62500.00 (50000.00-62500.00) uplift +0.0% n=70/70 OVERLAP
+```
+
+Verdict HOLD as bed, do not ship. Grounds (parent report
+`tmp/byteexact/LANE-P9-PARENT.md`): (1) zero pinned-corpus gain
+(0/24); (2) mechanism is a per-encode memo of u12_period/u18 —
+a degenerate-only win; (3) memo state smells file-static, so
+thread-safety for concurrent encodes is unproven. Reopen only
+if worst-case/owned-heavy throughput becomes a goal.
+
+### Provenance — P9 Air runs
+
+- Date: 2026-09-28 (W7 n=35/n=70 ~00:16–00:18Z; T2 n=35/n=70
+  00:24:12–00:25:03Z). Lane commits: p9-w7 @ 4d842976,
+  p9-t2confirm @ b38737ba, P9 merge 2b9b9b2a, parent ed9443a8.
+- Host: MacBookAir.lan, Apple M1, ncpu=8; Apple clang 16.0.0
+  (clang-1600.0.26.6). Air checkout @ 9661aafe, clean.
+- Gate: load1 < 16 (2×ncpu); T2 n=70 load1 2.93–3.31,
+  W7 n=70 load1 7.43–9.09; 0 refusals; 20/20 PASS both runs.
+- T2 builds: base enc.c md5 `bbe7a11c…` (26339400), new enc.c
+  `6ef649e7…` (= P8 T2 pin, 9661aafe). W7 builds: base enc.c
+  `6ef649e7…`, W7 enc.c `e610679e…`. All `make port_cli bench`
+  exit 0, 0 warnings.
+- Corpus pins OK on Air (`mkcorpus --check`); TSVs committed
+  under `tmp/verify-p9-air/p9-{t2confirm,w7}/`; all cmp files
+  reproduce byte-identically from committed TSVs.
+
 ## Placeholders
 
 None left for baseline scope. Future work (not this lane):
-oracle timing mode, larger-file corpus points.
+larger-file corpus points. (Oracle timing mode landed as
+`bench/oracle-bench.py`; see the Oracle note above.)

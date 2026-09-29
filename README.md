@@ -49,41 +49,64 @@ The 5 are byte-identical before and after the gating merge
 
 ## Performance
 
-Throughput in MiB/s, medians over 35 samples (5 runs × 7 reps,
-interleaved base/opt, pinned corpus), text-256k input, Apple M1 Max,
-Apple clang 21 `-O2 -std=c11`. Method: `docs/PERF.md`.
+Throughput in MiB/s, medians over n=35 (5 gated runs × 7 reps, same
+box back-to-back), MacBookAir M1, Apple clang 21 `-O2 -std=c11`,
+tree 7164e869. Port = in-process (`bench/bench.c`); Apple =
+stdio-pipe floor (`bench/oracle-bench.py` over `oracle_probe`):
+every Apple sample includes fork+exec+dlopen+pipes, so Apple
+in-process ≥ quoted, always.
 
-| op | level | P1 baseline | P6 | cumulative |
-|----|-------|-------------|----|------------|
-| enc | L0 | 70.92 | 120.31 | +69.6% |
-| enc | L1 | 3.77 | 14.16 | +275.6% |
-| enc | L5 | 4.90 | 10.97 | +123.9% |
-| enc | L9 | 0.29 | 4.25 | +1365.5% |
-| dec | L0 | 87.35 | 451.26 | +416.6% |
-| dec | L1 | 118.15 | 224.01 | +89.6% |
-| dec | L5 | 125.06 | 222.02 | +77.5% |
-| dec | L9 | 124.63 | 224.62 | +80.2% |
+Encode, port / Apple:
 
-Sources: P1 column = `docs/PERF.md` baseline 2026-09-28; P6 column
-= P6 merge opt medians (n=35/35 every cell). Per-round chain behind
-the cumulative (same-host back-to-back uplifts, text-256k): P2 dec
-L0 +298.8%, enc L9 +1143.8%; P3 enc L5 +15.2%; P4 enc L1 +24.2% /
-L5 +21.7%; P5 enc L9 +28.4%; P6 dec L0 +30.3% / L1 +10.8% /
-L5 +5.3% / L9 +7.5%, enc L0 +27.6%. Caveat: the P1 L9-enc median
-(0.29) carries a documented host-noise excursion (`docs/PERF.md`
-provenance note), so that row's ×14.7 is partly noise-floor
-artifact — the per-round chain is the honest unit.
+| corpus | L0 | L1 | L5 | L9 |
+|--------|----|----|----|----|
+| text-256k | 118.26 / 59.49 | 15.62 / 51.76 | 11.80 / 49.04 | 5.71 / 41.11 |
+| mixed-128k | 45.39 / 38.92 | 20.41 / 36.50 | 14.68 / 35.50 | 7.02 / 28.69 |
+| zeros-64k | 1008.06 / 24.18 | 1524.39 / 24.02 | 1524.39 / 23.97 | 1524.39 / 20.00 |
 
-PGO is opt-in and build-only (`make pgo`; the default build tree is
-untouched, no source change). Measured text-256k: enc L9 +13.5%,
-dec L1 +36.0% / L5 +34.7% / L9 +39.2% (n=35). Byte-identity holds
-under PGO: PGO-binary FULL battery 12784/12784 PASS.
+Decode, port / Apple (each side decodes its own bytes):
 
-Apple gap, stated plainly: no oracle timing has ever been run
-(`docs/PERF.md` oracle column reads "not run" — no oracle-timing
-harness exists), so no port-vs-Apple speed comparison is claimed.
-Every number above is port-vs-port. Matching or beating Apple
-throughput is in-progress future work, not a result.
+| corpus | L0 | L1 | L5 | L9 |
+|--------|----|----|----|----|
+| text-256k | 564.33 / 75.77 | 250.00 / 82.90 | 255.36 / 84.21 | 257.20 / 84.07 |
+| mixed-128k | 606.80 / 44.03 | 573.39 / 50.17 | 600.96 / 50.75 | 576.04 / 50.65 |
+| zeros-64k | 62500.00 / 28.13 | 62500.00 / 28.02 | 62500.00 / 28.10 | 62500.00 / 28.10 |
+
+Reading the gap (which direction each claim favors):
+
+- Apple leads, conservative claim — pipe overhead can only
+  understate Apple, so the true gap is larger: enc L1/L5/L9 on
+  text (+231.5/+315.6/+619.7%) and mixed (+78.8/+141.8/+308.9%).
+  6 cells, all SEPARATED.
+- No claim where the port number is higher (all dec cells, enc
+  L0, all zeros): the port is timed in-process while Apple pays
+  ~2–4 ms spawn+pipe per sample (visible as the ~20–85 MiB/s
+  floor on sub-0.1 ms-codec cells), so these gaps favor the port
+  by construction. Apple in-process could be faster on any of
+  them. Zeros cells carry no Apple codec information (pure
+  overhead floor); port zeros-dec 62500.00 is the timer-quantum
+  floor, same artifact class.
+
+Byte note: port enc == Apple enc on 9/12 cells; mixed-128k
+L1/L5/L9 differ (pre-existing — port bytes identical to the gated
+e582954c on all 3; Apple 27.0 == 27.0.1 on all 3; every output
+self-roundtrips and cross-decodes OK). Sizes within 3 B, so
+dec-timing inputs are size-matched.
+
+PGO is opt-in and build-only (`make pgo`; the default build tree
+is untouched, no source change). Re-measured on this tree (Air,
+interleaved --ab, n=35, all SEPARATED), text-256k: enc L9 +16.4%,
+dec L1 +44.5% / L5 +44.3% / L9 +43.9%. Caveat: enc L0 −1.4%
+SEPARATED slower. Byte-identity holds under PGO: PGO-binary enc
+== normal enc 12/12.
+
+Sources: every cell traces to
+`tmp/verify-p10-air/p10-readme/cmp-port-vs-apple.txt` (bands + n +
+verdicts), reproducible byte-identically from `gated-port/` +
+`gated-apple/` run TSVs; PGO from `cmp-pgo.txt` + `gated-pgoab/`.
+Gate: load1 < 16, 0 refusals on all runs, pin `taskpolicy-t0l0`.
+Method: `docs/PERF.md` + `bench/GATED-PROTOCOL.md`; Apple
+harness: `bench/oracle-bench.py`.
 
 ## Clean-room methodology
 

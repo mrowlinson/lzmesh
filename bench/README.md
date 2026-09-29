@@ -15,6 +15,12 @@ recorded baseline.)
   Verifies roundtrip bytes + encode determinism every rep; exit nonzero
   on any failure. Levels are 0/1/5/9 (full-form `0xE00/0xE01/0xE05/0xE09`
   at the API boundary, per `lzmesh.h`).
+- `oracle-bench.py` — Apple-oracle timing harness. Same CLI/TSV
+  schema as `bench.c` (`ORACLE_PROBE=<bin> ./oracle-bench.py [-n
+  reps] [-l 0159] file...`), one `oracle_probe enc|dec` spawn per
+  sample. Samples include process-spawn + stdio overhead, so Apple
+  in-process ≥ quoted; see the header comment for the asymmetry +
+  quoting direction before comparing against `bench.c` numbers.
 - `mkcorpus.py` — deterministic corpus generator (`python3 mkcorpus.py`
   regenerates; `--check` verifies byte-identity). Fixed seeds, no
   platform dependence.

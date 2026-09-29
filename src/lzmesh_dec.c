@@ -1343,6 +1343,93 @@ static void lz_u6h_sync_bitpos(struct lz_u3_lanes *lanes, const size_t *bpos) {
     }
 }
 
+/* P10-symdec: unchecked symbol decode (HINT-P9-SYMDEC bets 2+3,
+ * guard-once + x8 unroll; bet 1 word-buffer deferred — B2 shows the 3
+ * byte loads are same-line L1 hits while the loop carries 5
+ * branches/symbol + stack cap/bpos round-trips; refill branches would
+ * trade ~1:1 against the killed guard branches, so hoist+unroll first).
+ * Caller proves the guard for THIS symbol: p != NULL, pos < cap_bits,
+ * (pos>>3)+2 < cap_bytes, pos+maxlen <= cap_bits. Body = the fast
+ * branch of decode_sym_fast verbatim (same 3 loads, shift/or/mask,
+ * tab[peek]); tab[] bit-identical, no table change (Moffat do-not-bed).
+ * Only the len FAIL can fire — same symbol, same bpos as checked. */
+static int lz_u6h_decode_sym_unchecked(const uint8_t *p, size_t *bpos,
+                                       const uint16_t *tab, uint32_t maxlen,
+                                       uint32_t mask, uint32_t *sym) {
+    size_t pos = *bpos;
+    size_t byte_off = pos >> 3;
+    uint32_t sh = (uint32_t)(pos & (size_t)7);
+    uint32_t w = (uint32_t)p[byte_off] |
+                 ((uint32_t)p[byte_off + (size_t)1] << 8) |
+                 ((uint32_t)p[byte_off + (size_t)2] << 16);
+    uint32_t e = tab[(w >> sh) & mask];
+    uint32_t len = e >> 8;
+    if (len == (uint32_t)0 || len > maxlen) {
+        return LZ_U3_FAIL;
+    }
+    *bpos = pos + (size_t)len;
+    *sym = e & (uint32_t)0xFF;
+    return LZ_U3_OK;
+}
+
+/* P10-symdec: per-lane unchecked budget — max m such that m leading
+ * symbols from start satisfy the unchecked guard however lens fall
+ * (1..maxlen). Bit leg: s+m*maxlen <= cap_bits. Byte leg:
+ * s+(m-1)*maxlen < room with room = (cap_bytes-2)*8, i.e.
+ * (pos>>3)+2 < cap_bytes for every reachable pos. Closed form over
+ * monotone bounds => sufficient; conservative, never wrong. */
+static size_t lz_u6h_unchecked_budget(const uint8_t *p, size_t start,
+                                      size_t cap_bits, size_t cap_bytes,
+                                      uint32_t maxlen) {
+    size_t m;
+    size_t room;
+    size_t m2;
+    if (p == NULL || cap_bytes < (size_t)3 || start >= cap_bits) {
+        return (size_t)0;
+    }
+    m = (cap_bits - start) / (size_t)maxlen;
+    room = (cap_bytes - (size_t)2) * (size_t)8;
+    if (room <= start) {
+        return (size_t)0;
+    }
+    m2 = (room - start - (size_t)1) / (size_t)maxlen + (size_t)1;
+    if (m2 < m) {
+        m = m2;
+    }
+    return m;
+}
+
+/* P10-symdec round macros (lz_u6h_substream scope only; #undef'd after
+ * the function). Lane bpos live in scalars c0..c7 (registers);
+ * LZ_U6H_WB8 writes them back to bpos[] on round exit / FAIL exits. */
+#define LZ_U6H_WB8()                                                           \
+    do {                                                                       \
+        bpos[0] = c0;                                                          \
+        bpos[1] = c1;                                                          \
+        bpos[2] = c2;                                                          \
+        bpos[3] = c3;                                                          \
+        bpos[4] = c4;                                                          \
+        bpos[5] = c5;                                                          \
+        bpos[6] = c6;                                                          \
+        bpos[7] = c7;                                                          \
+    } while (0)
+#define LZ_U6H_DEC(qk, ck, tab, maxlen, mask)                                  \
+    do {                                                                       \
+        v = (uint32_t)0;                                                       \
+        if (lz_u6h_decode_sym_unchecked((qk), &(ck), (tab), (maxlen), (mask),   \
+                                        &v) != LZ_U3_OK) {                     \
+            LZ_U6H_WB8();                                                      \
+            lz_u6h_sync_bitpos(lanes, bpos);                                   \
+            return LZ_U3_FAIL;                                                 \
+        }                                                                      \
+    } while (0)
+#define LZ_U6H_V10FAIL()                                                       \
+    do {                                                                       \
+        LZ_U6H_WB8();                                                          \
+        lz_u6h_sync_bitpos(lanes, bpos);                                       \
+        return LZ_U3_FAIL;                                                     \
+    } while (0)
+
 /* One HUFFMAN substream (S3.8/Q4): 11x3b meta + 32b bitmap from lane 0,
  * meta table (maxlen 5), used=8*popcount lengths round-robin, ascending
  * scatter, main table (maxlen 10), count symbols round-robin. Lanes at
@@ -1421,7 +1508,95 @@ static int lz_u6h_substream(struct lz_u3_lanes *lanes, uint32_t count,
         }
         bpos[sk] = lanes->l[sk].bitpos;
     }
-    for (i = (uint32_t)0; i < used; i++) {
+    /* P10-symdec: guard-once prefix. npre = leading symbols provably
+     * unchecked-safe on all 8 lanes (round-robin from lane 0, so lane k
+     * consumes ceil((npre-k)/8) <= budget[k] iff npre <= k+8*budget[k]);
+     * nrounds>0 implies every budget >= 1, hence qk != NULL). Rounds run
+     * x8-unrolled with lane-local bpos (registers, no li wrap, no
+     * bounds branches); symbols [8R,used) take the checked path. FAIL
+     * exits write back lane bpos first — same symbol, same lanes state
+     * as the checked loop. */
+    i = (uint32_t)0;
+    {
+        size_t npre = (size_t)used;
+        size_t nrounds;
+        int k;
+        for (k = 0; k < 8; k++) {
+            size_t lim = (size_t)k + (size_t)8 *
+                lz_u6h_unchecked_budget(lp[k], bpos[k], cap_bits[k],
+                                        cap_bytes[k], (uint32_t)5);
+            if (lim < npre) {
+                npre = lim;
+            }
+        }
+        nrounds = npre / (size_t)8;
+        if (nrounds > (size_t)0) {
+            const uint8_t *q0 = lp[0];
+            const uint8_t *q1 = lp[1];
+            const uint8_t *q2 = lp[2];
+            const uint8_t *q3 = lp[3];
+            const uint8_t *q4 = lp[4];
+            const uint8_t *q5 = lp[5];
+            const uint8_t *q6 = lp[6];
+            const uint8_t *q7 = lp[7];
+            size_t c0 = bpos[0];
+            size_t c1 = bpos[1];
+            size_t c2 = bpos[2];
+            size_t c3 = bpos[3];
+            size_t c4 = bpos[4];
+            size_t c5 = bpos[5];
+            size_t c6 = bpos[6];
+            size_t c7 = bpos[7];
+            size_t r;
+            uint32_t v;
+            for (r = (size_t)0; r < nrounds; r++) {
+                size_t r8 = r * (size_t)8;
+                LZ_U6H_DEC(q0, c0, meta_tab, (uint32_t)5, (uint32_t)0x1F);
+                if (v > (uint32_t)10) {
+                    LZ_U6H_V10FAIL();
+                }
+                tmp[r8] = (uint8_t)v;
+                LZ_U6H_DEC(q1, c1, meta_tab, (uint32_t)5, (uint32_t)0x1F);
+                if (v > (uint32_t)10) {
+                    LZ_U6H_V10FAIL();
+                }
+                tmp[r8 + (size_t)1] = (uint8_t)v;
+                LZ_U6H_DEC(q2, c2, meta_tab, (uint32_t)5, (uint32_t)0x1F);
+                if (v > (uint32_t)10) {
+                    LZ_U6H_V10FAIL();
+                }
+                tmp[r8 + (size_t)2] = (uint8_t)v;
+                LZ_U6H_DEC(q3, c3, meta_tab, (uint32_t)5, (uint32_t)0x1F);
+                if (v > (uint32_t)10) {
+                    LZ_U6H_V10FAIL();
+                }
+                tmp[r8 + (size_t)3] = (uint8_t)v;
+                LZ_U6H_DEC(q4, c4, meta_tab, (uint32_t)5, (uint32_t)0x1F);
+                if (v > (uint32_t)10) {
+                    LZ_U6H_V10FAIL();
+                }
+                tmp[r8 + (size_t)4] = (uint8_t)v;
+                LZ_U6H_DEC(q5, c5, meta_tab, (uint32_t)5, (uint32_t)0x1F);
+                if (v > (uint32_t)10) {
+                    LZ_U6H_V10FAIL();
+                }
+                tmp[r8 + (size_t)5] = (uint8_t)v;
+                LZ_U6H_DEC(q6, c6, meta_tab, (uint32_t)5, (uint32_t)0x1F);
+                if (v > (uint32_t)10) {
+                    LZ_U6H_V10FAIL();
+                }
+                tmp[r8 + (size_t)6] = (uint8_t)v;
+                LZ_U6H_DEC(q7, c7, meta_tab, (uint32_t)5, (uint32_t)0x1F);
+                if (v > (uint32_t)10) {
+                    LZ_U6H_V10FAIL();
+                }
+                tmp[r8 + (size_t)7] = (uint8_t)v;
+            }
+            LZ_U6H_WB8();
+            i = (uint32_t)(nrounds * (size_t)8);
+        }
+    }
+    for (; i < used; i++) {
         uint32_t v = (uint32_t)0;
         /* P2-bitio: wrapping lane cursor == i%8, no modulo. */
         if (lz_u6h_decode_sym_fast(lp[li], cap_bits[li], cap_bytes[li],
@@ -1467,7 +1642,65 @@ static int lz_u6h_substream(struct lz_u3_lanes *lanes, uint32_t count,
         return LZ_U3_FAIL;
     }
     li = (uint32_t)0;
-    for (i = (uint32_t)0; i < count; i++) {
+    /* P10-symdec: guard-once + x8 rounds, same shape as the meta loop
+     * above (maxlen 10, mask 0x3FF, no v>10 check). */
+    i = (uint32_t)0;
+    {
+        size_t npre = (size_t)count;
+        size_t nrounds;
+        int k;
+        for (k = 0; k < 8; k++) {
+            size_t lim = (size_t)k + (size_t)8 *
+                lz_u6h_unchecked_budget(lp[k], bpos[k], cap_bits[k],
+                                        cap_bytes[k], (uint32_t)10);
+            if (lim < npre) {
+                npre = lim;
+            }
+        }
+        nrounds = npre / (size_t)8;
+        if (nrounds > (size_t)0) {
+            const uint8_t *q0 = lp[0];
+            const uint8_t *q1 = lp[1];
+            const uint8_t *q2 = lp[2];
+            const uint8_t *q3 = lp[3];
+            const uint8_t *q4 = lp[4];
+            const uint8_t *q5 = lp[5];
+            const uint8_t *q6 = lp[6];
+            const uint8_t *q7 = lp[7];
+            size_t c0 = bpos[0];
+            size_t c1 = bpos[1];
+            size_t c2 = bpos[2];
+            size_t c3 = bpos[3];
+            size_t c4 = bpos[4];
+            size_t c5 = bpos[5];
+            size_t c6 = bpos[6];
+            size_t c7 = bpos[7];
+            size_t r;
+            uint32_t v;
+            for (r = (size_t)0; r < nrounds; r++) {
+                size_t r8 = r * (size_t)8;
+                LZ_U6H_DEC(q0, c0, main_tab, (uint32_t)10, (uint32_t)0x3FF);
+                out[r8] = (uint8_t)v;
+                LZ_U6H_DEC(q1, c1, main_tab, (uint32_t)10, (uint32_t)0x3FF);
+                out[r8 + (size_t)1] = (uint8_t)v;
+                LZ_U6H_DEC(q2, c2, main_tab, (uint32_t)10, (uint32_t)0x3FF);
+                out[r8 + (size_t)2] = (uint8_t)v;
+                LZ_U6H_DEC(q3, c3, main_tab, (uint32_t)10, (uint32_t)0x3FF);
+                out[r8 + (size_t)3] = (uint8_t)v;
+                LZ_U6H_DEC(q4, c4, main_tab, (uint32_t)10, (uint32_t)0x3FF);
+                out[r8 + (size_t)4] = (uint8_t)v;
+                LZ_U6H_DEC(q5, c5, main_tab, (uint32_t)10, (uint32_t)0x3FF);
+                out[r8 + (size_t)5] = (uint8_t)v;
+                LZ_U6H_DEC(q6, c6, main_tab, (uint32_t)10, (uint32_t)0x3FF);
+                out[r8 + (size_t)6] = (uint8_t)v;
+                LZ_U6H_DEC(q7, c7, main_tab, (uint32_t)10, (uint32_t)0x3FF);
+                out[r8 + (size_t)7] = (uint8_t)v;
+            }
+            LZ_U6H_WB8();
+            i = (uint32_t)(nrounds * (size_t)8);
+        }
+    }
+    for (; i < count; i++) {
         uint32_t v = (uint32_t)0;
         /* P2-bitio: wrapping lane cursor == i%8, no modulo. */
         if (lz_u6h_decode_sym_fast(lp[li], cap_bits[li], cap_bytes[li],
@@ -1485,6 +1718,10 @@ static int lz_u6h_substream(struct lz_u3_lanes *lanes, uint32_t count,
     lz_u6h_sync_bitpos(lanes, bpos);
     return LZ_U3_OK;
 }
+
+#undef LZ_U6H_WB8
+#undef LZ_U6H_DEC
+#undef LZ_U6H_V10FAIL
 
 /* u6b D-B1: fetch RAW/REPEAT from [9,bo) in fetch order (lit,tok,len,dist
  * per S3.1/Q2) + lanes for suffix when dist>0 (Q3/Q7, no-Huffman only).

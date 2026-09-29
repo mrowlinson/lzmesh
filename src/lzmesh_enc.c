@@ -12517,7 +12517,10 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
         i5v = (unsigned char *)calloc(size > 0u ? size : 1u, 1u);
         i5m = (unsigned char *)calloc(size > 0u ? size : 1u, 1u);
         i5ts = (unsigned char *)calloc(size > 0u ? size : 1u, 1u);
-        qlink = (uint32_t *)calloc(size > 0u ? size : 1u,
+        /* P10-TABINIT Q1: every byte overwritten with FF below; calloc
+         * zeroing was pure waste (8n traffic for a 4n array). malloc +
+         * memset halves qlink traffic; fully overwritten => byte-risk 0. */
+        qlink = (uint32_t *)malloc((size > 0u ? size : 1u) *
                                    sizeof *qlink);
         ysp = (unsigned char *)calloc(size > 0u ? 2u * size : 2u, 1u);
         if (i5v == NULL || i5m == NULL || i5ts == NULL
@@ -12530,7 +12533,7 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
             free(ysp);
             return 0;
         }
-        /* calloc zeroes; chain EMPTY is 0xFFFFFFFF: fix up. */
+        /* chain EMPTY is 0xFFFFFFFF: full overwrite (malloc above). */
         /* P8-T2: memset-class fill, same bytes/bounds. */
         memset(qlink, 0xFF, size * sizeof *qlink);
         i5md.qlink = qlink;
