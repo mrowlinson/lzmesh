@@ -585,26 +585,22 @@ uint32_t lzmesh_u3_l1_anchor_init(uint32_t start) {
 
 /* S5.8 lazy primitives. */
 unsigned lzmesh_u3_bitlen(uint32_t v) {
-    unsigned n = 0;
-    while (v != 0) {
-        n++;
-        v >>= 1;
-    }
-    return n;
+    /* P11-WINS: clz idiom (was bit loop); identical for all v. */
+    return v == 0u ? 0u : 32u - (unsigned)__builtin_clz(v);
 }
 
 /* sb(dist) inverse of S3.11 d=(8<<sb)+low+8*suf-7, suf width=sb (G-SB).
  * max(sb)=2^(sb+4)-8; min(sb)=2^(sb+3)-7. d==0 -> 0 (no dist). */
 unsigned lzmesh_u3_sb_of(uint32_t d) {
+    /* P11-WINS: closed form (was sb=1..28 scan). d<=mx(sb)=2^(sb+4)-8
+     * iff sb+4 >= ceil(log2(d+8)) = bitlen(d+7); u64 avoids d+7 wrap. */
+    uint64_t x;
     unsigned sb;
     if (d <= 8u)
         return 0u;
-    for (sb = 1u; sb <= 28u; sb++) {
-        uint64_t mx = ((uint64_t)1 << (sb + 4u)) - 8u;
-        if ((uint64_t)d <= mx)
-            return sb;
-    }
-    return 28u;
+    x = (uint64_t)d + 7u; /* >=16: clz defined */
+    sb = 64u - (unsigned)__builtin_clzll(x) - 4u;
+    return sb <= 28u ? sb : 28u;
 }
 
 int64_t lzmesh_u3_score(uint32_t len, uint32_t dist, uint32_t extralits) {
@@ -795,6 +791,18 @@ void lzmesh_u4_dist_split(uint32_t d, unsigned *sb, unsigned *low,
     s = lzmesh_u3_sb_of(d);
     base = (s >= 29u) ? 0u : (8u << s);
     t = d + 7u - base; /* u32 wrap per S6.3 */
+    *sb = s;
+    *low = (unsigned)(t & 7u);
+    *suf = t >> 3;
+}
+
+/* P11-WINS: unchecked twin (all 10 call sites pass &local x3, never NULL;
+ * callers audited 2026-09-29). Same body minus the guard. */
+static void lzmesh_u4_dist_split_nc(uint32_t d, unsigned *sb,
+                                    unsigned *low, uint32_t *suf) {
+    unsigned s = lzmesh_u3_sb_of(d);
+    uint32_t base = (s >= 29u) ? 0u : (8u << s);
+    uint32_t t = d + 7u - base; /* u32 wrap per S6.3 */
     *sb = s;
     *low = (unsigned)(t & 7u);
     *suf = t >> 3;
@@ -1732,6 +1740,106 @@ int lzmesh_u7_comp_keep(uint32_t D, uint32_t fo, size_t outpos, size_t n,
 }
 
 /* === API glue (owner: u1) === */
+/* P11-A fused dispatch (owner: p11-probe): single-evaluation want+dispatch.
+ * Bedded (P11 census, Air): every kept u37 encode evaluated the want chain
+ * TWICE (want_comp gate + dispatch re-want) + d1_gen_bail twice at n<=62:
+ * large u37 = 3 builds/6 parses per encode (4 parses killed, 67%); small
+ * kept = 5 builds (4 killed, 80%). Each killed build costs a whole parse
+ * (identical code path). This helper evaluates each want at most ONCE and
+ * returns the dispatch arm, so dispatch never re-probes. Arm order and
+ * gate conditions mirror want_comp + dispatch exactly (same sequence,
+ * same short-circuit); wants are pure in (src,size,level)+process-cached
+ * env knobs, so one evaluation == two. lzmesh_u4_want_comp kept intact
+ * for API compat. */
+enum {
+    P11_NONE, P11_U36M0, P11_U36_0, P11_U12, P11_U18, P11_U19,
+    P11_U38, P11_U21, P11_U23, P11_U27, P11_U29, P11_U30,
+    P11_U32, P11_U33, P11_U37_5, P11_U35M6, P11_U35M, P11_U35,
+    P11_U37_19, P11_U16_0, P11_U10_0, P11_U9RUN
+};
+static int lzmesh_p11_arm(const uint8_t *src, size_t size, int level) {
+    uint32_t lenB, modes, bo, fo;
+    if (!lzmesh_u3_level_parse_ok(level))
+        return P11_NONE;
+    if (src == NULL || size <= 1u)
+        return P11_NONE;
+    if (size > (size_t)LZMESH_U1_DS_MAX)
+        return P11_NONE;
+    if (!lzmesh_u9_is_run(src, size)) {
+        if (level == 1) {
+            size_t gopos = 0u;
+            if (lzmesh_e2_single_outlier(src, size, &gopos)
+                && lzmesh_e2_sparsepos_store(size, gopos)
+                && src[gopos == 0u ? 1u : 0u] != 0u)
+                return P11_NONE;
+        }
+        if (level == 0) {
+            if (lzmesh_u16_l0_nblocks(size) >= 2)
+                return lzmesh_u36m_want(src, size) ? P11_U36M0
+                                                   : P11_NONE;
+            return lzmesh_u36_want(src, size, level) ? P11_U36_0
+                                                     : P11_NONE;
+        }
+        if (lzmesh_u12_want(src, size, level))
+            return P11_U12;
+        if (lzmesh_u15_want(src, size, level))
+            return P11_U12;
+        if (lzmesh_u18_want(src, size, level))
+            return P11_U18;
+        if (lzmesh_u19_want(src, size, level))
+            return P11_U19;
+        if (level == 1 && lzmesh_u38_want(src, size, level))
+            return P11_U38;
+        if (lzmesh_u21_want(src, size, level)
+            && !lzmesh_i3_u21_bail(src, size, level))
+            return P11_U21;
+        if (lzmesh_u23_want(src, size, level))
+            return P11_U23;
+        if (lzmesh_u27_want(src, size, level))
+            return P11_U27;
+        if (lzmesh_u29_want(src, size, level))
+            return P11_U29;
+        if (lzmesh_u30_want(src, size, level))
+            return P11_U30;
+        if (lzmesh_u32_want(src, size, level))
+            return P11_U32;
+        if (lzmesh_u33_want(src, size, level))
+            return P11_U33;
+        if (level == 5 && lzmesh_u37_want(src, size, level))
+            return P11_U37_5;
+        if (lzmesh_u35m6_want(src, size, level))
+            return P11_U35M6;
+        if (lzmesh_u35m_want(src, size, level))
+            return P11_U35M;
+        if (lzmesh_u35_want(src, size, level))
+            return P11_U35;
+        if ((level == 1 || level == 9)
+            && lzmesh_u37_want(src, size, level)
+            && !lzmesh_d1_gen_bail(src, size, level))
+            return P11_U37_19;
+        return P11_NONE;
+    }
+    if (level == 0) {
+        if (lzmesh_u16_l0_nblocks(size) >= 2)
+            return lzmesh_u16_l0_want(src, size) ? P11_U16_0
+                                                  : P11_NONE;
+        if (!lzmesh_u10_l0_layout(size, &lenB, &modes, &bo, &fo))
+            return P11_NONE;
+        (void)lenB;
+        (void)modes;
+        return lzmesh_u7_comp_keep((uint32_t)size, fo, (size_t)fo + 10u,
+                                   size, (uint32_t)size, bo,
+                                   (uint32_t)size, 1) ? P11_U10_0
+                                                        : P11_NONE;
+    }
+    if (!lzmesh_u9_run_layout(size, &lenB, &modes, &bo, &fo))
+        return P11_NONE;
+    (void)lenB;
+    (void)modes;
+    return lzmesh_u7_comp_keep((uint32_t)size, fo, (size_t)fo + 10u, size,
+                               (uint32_t)size, bo, 1u, 1) ? P11_U9RUN
+                                                           : P11_NONE;
+}
 size_t lzmesh_encode(uint8_t *dst, size_t dst_capacity,
                      const uint8_t *src, size_t src_size,
                      void *scratch, int level) {
@@ -1776,72 +1884,91 @@ size_t lzmesh_encode(uint8_t *dst, size_t dst_capacity,
      * SHAPE-R-TC2 (levels 1/5/9, r2-live + trailing term). Emit below;
      * everything else falls through to u1 RAW (S5.9.a). General
      * COMP still blocked (scheduler/R-100/R-002/HDRBIT). */
-    if (lzmesh_u4_want_comp(src, src_size, level, scratch)) {
-        size_t w;
-        if (level == 0) {
-            if (!lzmesh_u9_is_run(src, src_size)) {
-                if (lzmesh_u16_l0_nblocks(src_size) >= 2) /* u20: k>=2 */
-                    w = lzmesh_u36m_emit(dst, dst_capacity, src,
-                                         src_size,
-                                         level); /* u36m L0 multi */
-                else
-                    w = lzmesh_u36_emit(dst, dst_capacity, src, src_size,
-                                        level); /* u36 L0-HUF non-run */
-            } else if (lzmesh_u16_l0_nblocks(src_size) >= 2) /* u20: k>=2 */
+    /* P11-A: single-evaluation dispatch (see lzmesh_p11_arm). Arm!=NONE
+     * is exactly want_comp!=0; each emit matches the old dispatch arm. */
+    {
+        int arm = lzmesh_p11_arm(src, src_size, level);
+        if (arm != P11_NONE) {
+            size_t w = 0u;
+            switch (arm) {
+            case P11_U36M0:
+                w = lzmesh_u36m_emit(dst, dst_capacity, src, src_size,
+                                     level);
+                break;
+            case P11_U36_0:
+                w = lzmesh_u36_emit(dst, dst_capacity, src, src_size,
+                                    level);
+                break;
+            case P11_U12:
+                w = lzmesh_u12_emit(dst, dst_capacity, src, src_size);
+                break;
+            case P11_U18:
+                w = lzmesh_u18_emit(dst, dst_capacity, src, src_size);
+                break;
+            case P11_U19:
+                w = lzmesh_u19_emit(dst, dst_capacity, src, src_size);
+                break;
+            case P11_U38:
+                w = lzmesh_u38_emit(dst, dst_capacity, src, src_size,
+                                    level);
+                break;
+            case P11_U21:
+                w = lzmesh_u21_emit(dst, dst_capacity, src, src_size,
+                                    level);
+                break;
+            case P11_U23:
+                w = lzmesh_u23_emit(dst, dst_capacity, src, src_size);
+                break;
+            case P11_U27:
+                w = lzmesh_u27_emit(dst, dst_capacity, src, src_size);
+                break;
+            case P11_U29:
+                w = lzmesh_u29_emit(dst, dst_capacity, src, src_size);
+                break;
+            case P11_U30:
+                w = lzmesh_u30_emit(dst, dst_capacity, src, src_size);
+                break;
+            case P11_U32:
+                w = lzmesh_u32_emit(dst, dst_capacity, src, src_size);
+                break;
+            case P11_U33:
+                w = lzmesh_u33_emit(dst, dst_capacity, src, src_size);
+                break;
+            case P11_U37_5:
+            case P11_U37_19:
+                w = lzmesh_u37_emit(dst, dst_capacity, src, src_size,
+                                    level);
+                break;
+            case P11_U35M6:
+                w = lzmesh_u35m6_emit(dst, dst_capacity, src, src_size,
+                                      level);
+                break;
+            case P11_U35M:
+                w = lzmesh_u35m_emit(dst, dst_capacity, src, src_size,
+                                     level);
+                break;
+            case P11_U35:
+                w = lzmesh_u35_emit(dst, dst_capacity, src, src_size,
+                                    level);
+                break;
+            case P11_U16_0:
                 w = lzmesh_u16_l0_emit(dst, dst_capacity, src_size,
                                        src[0]);
-            else
+                break;
+            case P11_U10_0:
                 w = lzmesh_u10_l0_emit(dst, dst_capacity, src_size,
                                        src[0]);
-        } else if (lzmesh_u9_is_run(src, src_size))
-            w = lzmesh_u9_run_emit(dst, dst_capacity, src_size, src[0]);
-        else if (lzmesh_u12_want(src, src_size, level)
-            || lzmesh_u15_want(src, src_size, level))
-            w = lzmesh_u12_emit(dst, dst_capacity, src, src_size);
-        else if (lzmesh_u18_want(src, src_size, level))
-            w = lzmesh_u18_emit(dst, dst_capacity, src, src_size);
-        else if (lzmesh_u19_want(src, src_size, level))
-            w = lzmesh_u19_emit(dst, dst_capacity, src, src_size);
-        else if (level == 1
-            && lzmesh_u38_want(src, src_size, level))
-            w = lzmesh_u38_emit(dst, dst_capacity, src, src_size,
-                                level);
-        else if (lzmesh_u21_want(src, src_size, level)
-            && !lzmesh_i3_u21_bail(src, src_size, level))
-            w = lzmesh_u21_emit(dst, dst_capacity, src, src_size,
-                                level);
-        else if (lzmesh_u23_want(src, src_size, level))
-            w = lzmesh_u23_emit(dst, dst_capacity, src, src_size);
-        else if (lzmesh_u27_want(src, src_size, level))
-            w = lzmesh_u27_emit(dst, dst_capacity, src, src_size);
-        else if (lzmesh_u29_want(src, src_size, level))
-            w = lzmesh_u29_emit(dst, dst_capacity, src, src_size);
-        else if (lzmesh_u30_want(src, src_size, level))
-            w = lzmesh_u30_emit(dst, dst_capacity, src, src_size);
-        else if (lzmesh_u32_want(src, src_size, level))
-            w = lzmesh_u32_emit(dst, dst_capacity, src, src_size);
-        else if (lzmesh_u33_want(src, src_size, level))
-            w = lzmesh_u33_emit(dst, dst_capacity, src, src_size);
-        else if (level == 5 && lzmesh_u37_want(src, src_size, level))
-            w = lzmesh_u37_emit(dst, dst_capacity, src, src_size, level);
-        /* H6: u35m6 L1 multi-block litonly multitok dist0 (multi-size). */
-        else if (lzmesh_u35m6_want(src, src_size, level))
-            w = lzmesh_u35m6_emit(dst, dst_capacity, src, src_size,
-                                  level);
-        /* G4: u35m L1 multi-token litonly dist0 (before u35 single). */
-        else if (lzmesh_u35m_want(src, src_size, level))
-            w = lzmesh_u35m_emit(dst, dst_capacity, src, src_size,
-                                 level);
-        else if (lzmesh_u35_want(src, src_size, level))
-            w = lzmesh_u35_emit(dst, dst_capacity, src, src_size,
-                                level);
-        else if ((level == 1 || level == 9)
-            && lzmesh_u37_want(src, src_size, level)
-            && !lzmesh_d1_gen_bail(src, src_size, level))
-            w = lzmesh_u37_emit(dst, dst_capacity, src, src_size, level);
-        else
-            w = 0; /* unreachable: want_comp gated entry. */
-        return w; /* 0 iff cap short (S4.5 no-trunc); never partial. */
+                break;
+            case P11_U9RUN:
+                w = lzmesh_u9_run_emit(dst, dst_capacity, src_size,
+                                       src[0]);
+                break;
+            default:
+                w = 0; /* unreachable: arm!=NONE gated entry. */
+                break;
+            }
+            return w; /* 0 iff cap short (S4.5 no-trunc); never partial. */
+        }
     }
 
     /* Single-RAW-block ceiling: ds must fit u32 LE and ds <= MAX (S6.5 C3). */
@@ -2957,7 +3084,7 @@ int lzmesh_u18_layout(size_t size, unsigned p, uint32_t *lenB,
     if (lenB == NULL || lenC == NULL || modes == NULL || bo == NULL
         || fo == NULL)
         return 0;
-    lzmesh_u4_dist_split((uint32_t)p, &sb, &low, &suf);
+    lzmesh_u4_dist_split_nc((uint32_t)p, &sb, &low, &suf);
     if (sb == 0u || sb > 7u)
         return 0; /* d>=9 => sb>=1; 1 lane byte fits sb<=7 */
     if (suf >= (1u << sb))
@@ -3069,7 +3196,7 @@ size_t lzmesh_u18_emit(uint8_t *dst, size_t dst_capacity,
         return 0;
     if (lenC > 0u && lenB != 1u && lenB != li)
         return 0;
-    lzmesh_u4_dist_split((uint32_t)p, &sb, &low, &suf);
+    lzmesh_u4_dist_split_nc((uint32_t)p, &sb, &low, &suf);
     if (sb == 0u || sb > 7u)
         return 0;
     if (suf >= (1u << sb))
@@ -7800,7 +7927,7 @@ int lzmesh_u33_layout(size_t size, unsigned p1, unsigned p2, size_t m1,
         return 0;
     if (m1 < 33u || m1 > 0x7fffffffu || m2 < 33u || m2 > 0x7fffffffu)
         return 0;
-    lzmesh_u4_dist_split((uint32_t)p2, &sb, &low, &suf);
+    lzmesh_u4_dist_split_nc((uint32_t)p2, &sb, &low, &suf);
     if (sb == 0u || sb > 7u)
         return 0; /* d2>=9 sb>=1; 1 lane byte fits sb<=7 */
     if (suf >= (1u << sb))
@@ -7945,7 +8072,7 @@ size_t lzmesh_u33_emit(uint8_t *dst, size_t dst_capacity,
         return 0;
     }
     dsym1 = (uint8_t)((uint32_t)p1 - 1u); /* sb0: low = d-1 */
-    lzmesh_u4_dist_split((uint32_t)p2, &sb, &low, &suf);
+    lzmesh_u4_dist_split_nc((uint32_t)p2, &sb, &low, &suf);
     if (sb == 0u || sb > 7u || suf >= (1u << sb))
         return 0;
     dsym2 = (uint8_t)((sb << 3) | (low & 7u));
@@ -10482,6 +10609,15 @@ typedef struct {
 static void lzmesh_u37_g6_store(uint32_t *big, uint32_t *small,
                                 const uint8_t *src, size_t size, size_t ins,
                                 unsigned hb) {
+    /* P11-WINS: one u64 load feeds all three tiers (LE low bytes equal
+     * load_n 3/5/7 bit-for-bit); tail keeps the stock guarded loads. */
+    if (ins + 8u <= size) {
+        uint64_t w8 = lzmesh_wl_ld64(src + ins);
+        small[lzmesh_u2_h3((uint32_t)(w8 & 0xFFFFFFu))] = (uint32_t)ins;
+        big[lzmesh_u2_h2(w8 & 0xFFFFFFFFFFull, hb)] = (uint32_t)ins;
+        big[lzmesh_u2_h1(w8 & 0xFFFFFFFFFFFFFFull, hb)] = (uint32_t)ins;
+        return;
+    }
     if (ins + 3u <= size)
         small[lzmesh_u2_h3(
             (uint32_t)lzmesh_u2_load_n(src + ins, 3u))] = (uint32_t)ins;
@@ -10498,6 +10634,13 @@ static void lzmesh_u37_g6_store(uint32_t *big, uint32_t *small,
 static void lzmesh_u37_g6_store_big(uint32_t *big,
                                     const uint8_t *src, size_t size, size_t ins,
                                     unsigned hb) {
+    /* P11-WINS: fused u64 (see g6_store). */
+    if (ins + 8u <= size) {
+        uint64_t w8 = lzmesh_wl_ld64(src + ins);
+        big[lzmesh_u2_h2(w8 & 0xFFFFFFFFFFull, hb)] = (uint32_t)ins;
+        big[lzmesh_u2_h1(w8 & 0xFFFFFFFFFFFFFFull, hb)] = (uint32_t)ins;
+        return;
+    }
     if (ins + 5u <= size)
         big[lzmesh_u2_h2(lzmesh_u2_load_n(src + ins, 5u),
                          hb)] = (uint32_t)ins;
@@ -10814,20 +10957,31 @@ static int lzmesh_s2_mx_best(const uint8_t *src, size_t size, size_t pos,
         return 0;
     q = head[lzmesh_s2_hx(
         lzmesh_u2_load_n(src + pos, LZMESH_S2_MXLOAD), hb)];
-    if (lzmesh_wpins_s2dbg_at(pos))
-        fprintf(stderr, "WPS2 pos=%u slotq=%d\n", (unsigned)pos, (int)q);
-    while (q >= 0) { /* J1: uncapped (deep writers visible) */
-        size_t qq = (size_t)q;
-        uint32_t dist, ln;
-        if (qq >= pos || qq >= size)
-            break;
-        q = prev[qq];
-        if (lzmesh_wpins_s2dbg_at(pos))
-            fprintf(stderr, "WPS2  qq=%u heq=%d hid=%d\n", (unsigned)qq,
-                lzmesh_u2_head_eq(src + pos, src + qq, LZMESH_S2_MXHEAD),
-                lzmesh_i3_l1_span_hide(level, pos, qq, last_m, last_end, last_rep));
-        if (lzmesh_i3_l1_span_hide(level, pos, qq, last_m, last_end,
-                                   last_rep)) {
+    /* P11-WINS (W9-shape): hoist pos-constant predicates out of the link
+     * loop. hide fires only if level==1 && pos==last_end (bedded peq
+     * 79%/20% text/mixed-e01); otherwise every link skips the call. */
+    {
+        int p11_dbg = lzmesh_wpins_s2dbg_at(pos);
+        int p11_hide = (level == 1 && pos == last_end);
+        if (p11_dbg)
+            fprintf(stderr, "WPS2 pos=%u slotq=%d\n", (unsigned)pos,
+                    (int)q);
+        while (q >= 0) { /* J1: uncapped (deep writers visible) */
+            size_t qq = (size_t)q;
+            uint32_t dist, ln;
+            if (qq >= pos || qq >= size)
+                break;
+            q = prev[qq];
+            if (p11_dbg)
+                fprintf(stderr, "WPS2  qq=%u heq=%d hid=%d\n",
+                        (unsigned)qq,
+                        lzmesh_u2_head_eq(src + pos, src + qq,
+                                          LZMESH_S2_MXHEAD),
+                        lzmesh_i3_l1_span_hide(level, pos, qq, last_m,
+                                               last_end, last_rep));
+            if (p11_hide
+                && lzmesh_i3_l1_span_hide(level, pos, qq, last_m,
+                                          last_end, last_rep)) {
             /* I3 hidden: K5-remember first hidden-verifying->=7. */
             if (!k5_have
                 && lzmesh_u2_head_eq(src + pos, src + qq,
@@ -10854,6 +11008,7 @@ static int lzmesh_s2_mx_best(const uint8_t *src, size_t size, size_t pos,
         *blen = ln;
         *bdist = dist;
         return 1;
+        }
     }
     /* K5: no visible->=6; fall back to hidden->=7 (NEW-last only;
      * defer to rep@P+1, len>=2). */
@@ -10927,10 +11082,19 @@ static int lzmesh_u37_slot_best(const uint8_t *src, size_t size, size_t pos,
                                 const unsigned char *ycon,
                                 const unsigned char *ywin) {
     uint32_t q;
+    uint64_t p11_w8 = 0u;
+    int p11_fused;
     if (!lzmesh_u37_elig(pos, size, relax))
         return 0;
+    /* P11-WINS: one u64 feeds the 7/5/3 cascade (LE low bytes equal
+     * load_n bit-for-bit); tail legs keep guarded stock loads. */
+    p11_fused = (pos + 8u <= size);
+    if (p11_fused)
+        p11_w8 = lzmesh_wl_ld64(src + pos);
     if (pos + 7u <= size) {
-        q = big[lzmesh_u2_h1(lzmesh_u2_load_n(src + pos, 7u), hb)];
+        q = big[lzmesh_u2_h1(p11_fused ? (p11_w8 & 0xFFFFFFFFFFFFFFull)
+                                       : lzmesh_u2_load_n(src + pos, 7u),
+                             hb)];
         if (q != LZMESH_U2_EMPTY && (size_t)q < pos
             && lzmesh_u2_head_eq(src + pos, src + q, 7u)) {
             uint32_t dist = (uint32_t)pos - q;
@@ -10944,7 +11108,9 @@ static int lzmesh_u37_slot_best(const uint8_t *src, size_t size, size_t pos,
         }
     }
     if (pos + 5u <= size) {
-        q = big[lzmesh_u2_h2(lzmesh_u2_load_n(src + pos, 5u), hb)];
+        q = big[lzmesh_u2_h2(p11_fused ? (p11_w8 & 0xFFFFFFFFFFull)
+                                       : lzmesh_u2_load_n(src + pos, 5u),
+                             hb)];
         if (q != LZMESH_U2_EMPTY && (size_t)q < pos
             && lzmesh_u2_head_eq(src + pos, src + q, 5u)) {
             uint32_t dist = (uint32_t)pos - q;
@@ -10959,7 +11125,8 @@ static int lzmesh_u37_slot_best(const uint8_t *src, size_t size, size_t pos,
     }
     if (pos + 3u <= size) {
         uint32_t s = lzmesh_u2_h3(
-            (uint32_t)lzmesh_u2_load_n(src + pos, 3u));
+            (uint32_t)(p11_fused ? (p11_w8 & 0xFFFFFFu)
+                                 : lzmesh_u2_load_n(src + pos, 3u)));
         q = small[s];
         if (q != LZMESH_U2_EMPTY && (size_t)q < pos
             && lzmesh_u2_head_eq(src + pos, src + q, 3u)) {
@@ -11253,21 +11420,32 @@ static int lzmesh_i4_tier(const uint8_t *src, size_t size, size_t pos,
                           const uint32_t *big, const uint32_t *small,
                           unsigned hb) {
     uint32_t q;
+    uint64_t p11_w8 = 0u;
+    int p11_fused;
+    /* P11-WINS: fused u64 (see slot_best). */
+    p11_fused = (pos + 8u <= size);
+    if (p11_fused)
+        p11_w8 = lzmesh_wl_ld64(src + pos);
     if (pos + 7u <= size) {
-        q = big[lzmesh_u2_h1(lzmesh_u2_load_n(src + pos, 7u), hb)];
+        q = big[lzmesh_u2_h1(p11_fused ? (p11_w8 & 0xFFFFFFFFFFFFFFull)
+                                       : lzmesh_u2_load_n(src + pos, 7u),
+                             hb)];
         if (q != LZMESH_U2_EMPTY && (size_t)q < pos
             && lzmesh_u2_head_eq(src + pos, src + q, 7u))
             return 7;
     }
     if (pos + 5u <= size) {
-        q = big[lzmesh_u2_h2(lzmesh_u2_load_n(src + pos, 5u), hb)];
+        q = big[lzmesh_u2_h2(p11_fused ? (p11_w8 & 0xFFFFFFFFFFull)
+                                       : lzmesh_u2_load_n(src + pos, 5u),
+                             hb)];
         if (q != LZMESH_U2_EMPTY && (size_t)q < pos
             && lzmesh_u2_head_eq(src + pos, src + q, 5u))
             return 5;
     }
     if (pos + 3u <= size && small != NULL) {
         q = small[lzmesh_u2_h3(
-            (uint32_t)lzmesh_u2_load_n(src + pos, 3u))];
+            (uint32_t)(p11_fused ? (p11_w8 & 0xFFFFFFu)
+                                 : lzmesh_u2_load_n(src + pos, 3u)))];
         if (q != LZMESH_U2_EMPTY && (size_t)q < pos
             && lzmesh_u2_head_eq(src + pos, src + q, 3u))
             return 3;
@@ -15020,7 +15198,7 @@ static size_t lzmesh_g1_emit(uint8_t *dst, size_t dst_capacity,
             uint32_t suf, kk;
             if (!toks[t].is_new)
                 continue;
-            lzmesh_u4_dist_split(toks[t].dist, &sb, &low, &suf);
+            lzmesh_u4_dist_split_nc(toks[t].dist, &sb, &low, &suf);
             kk = slot % 8u;
             for (bb = 0u; bb < sb; bb++) {
                 unsigned p = pos[kk]++;
@@ -16047,7 +16225,7 @@ static int lzmesh_h3_probe(const uint8_t *src,
             if (ti >= bufcap)
                 return 0;
             tok[ti++] = lzmesh_u7_token_new(lit_f, ms);
-            lzmesh_u4_dist_split(dist, &sb, &low, &suf);
+            lzmesh_u4_dist_split_nc(dist, &sb, &low, &suf);
             if (sb > 28u || dist == 0u)
                 return 0;
             if (sb < 31u && suf >= (1u << sb))
@@ -16481,7 +16659,7 @@ static size_t lzmesh_h3_huf_block(const uint8_t *lit, size_t li,
             uint32_t suf, kk;
             if (!toks[t].is_new)
                 continue;
-            lzmesh_u4_dist_split(toks[t].dist, &sb, &low, &suf);
+            lzmesh_u4_dist_split_nc(toks[t].dist, &sb, &low, &suf);
             kk = slot % 8u;
             /* P2-bitio: identical bit-OR via u35_put (was inline loop). */
             lzmesh_u35_put(dst + bo + startb[kk], &pos[kk], suf, sb);
@@ -16842,7 +17020,7 @@ static size_t lzmesh_h3_multi(const uint8_t *src, size_t size,
                         uint32_t suf, kk;
                         if (!toks[t].is_new)
                             continue;
-                        lzmesh_u4_dist_split(toks[t].dist, &sb, &low,
+                        lzmesh_u4_dist_split_nc(toks[t].dist, &sb, &low,
                                              &suf);
                         kk = slot % 8u;
                         for (bb = 0u; bb < sb; bb++) {
@@ -17257,7 +17435,7 @@ static size_t lzmesh_u37_build(const uint8_t *src, size_t size,
             if (ti >= size)
                 goto out;
             tok[ti++] = lzmesh_u7_token_new(lit_f, ms);
-            lzmesh_u4_dist_split(toks[t].dist, &sb, &low, &suf);
+            lzmesh_u4_dist_split_nc(toks[t].dist, &sb, &low, &suf);
             if (sb > 28u || suf >= (sb >= 31u ? 0xFFFFFFFFu : (1u << sb))
                 || toks[t].dist == 0u)
                 goto out;
@@ -17593,7 +17771,7 @@ static size_t lzmesh_u37_build(const uint8_t *src, size_t size,
             uint32_t suf, kk;
             if (!toks[t].is_new)
                 continue;
-            lzmesh_u4_dist_split(toks[t].dist, &sb, &low, &suf);
+            lzmesh_u4_dist_split_nc(toks[t].dist, &sb, &low, &suf);
             kk = slot % 8u;
             for (b = 0u; b < sb; b++) {
                 unsigned p = posb[kk]++;

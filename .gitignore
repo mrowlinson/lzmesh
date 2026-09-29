@@ -47,6 +47,7 @@ tests/unit/test_m31_q1_gate
 tests/unit/test_m31_q1_skip
 tests/unit/test_m32_slots_fixa
 tests/unit/test_mtf
+tests/unit/test_p11_sb_clz
 tests/unit/test_p2_tailsplit
 tests/unit/test_p3n1_extend
 tests/unit/test_p4n3_gate
