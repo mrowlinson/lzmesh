@@ -8445,6 +8445,10 @@ static int lzmesh_qm_meta_build(const uint32_t *mfreq, unsigned used,
  * Symbol lengths come from the H5DEEP q-floor loop (no q rungs).
  * Layout runs l0=1/later=0/ncap for the tot probe only. Returns 1
  * with all outs incl *tot_b else 0. */
+/* P12-W8: fwd decl (defined in S3 section below; two-queue Huffman,
+ * leaf-first ties, depths 1..10 or fail). */
+static int lzmesh_s3_huff(const uint32_t *freq, unsigned nsym,
+    uint8_t *lens);
 static int lzmesh_u35_tryq(const uint8_t *s, size_t n, const uint32_t *freq,
                            uint8_t *lens, uint16_t *codes,
                            uint8_t *mlens, uint16_t *mcodes, uint8_t *vals,
@@ -8474,7 +8478,14 @@ static int lzmesh_u35_tryq(const uint8_t *s, size_t n, const uint32_t *freq,
             for (i2 = 0u; i2 < 256u; i2++)
                 qfreq[i2] =
                     (freq[i2] != 0u && freq[i2] < qq) ? qq : freq[i2];
-            if (lzmesh_pack1_solve(qfreq, 256u, 10u, lens) == 0u)
+            /* P12-W8 skip-solve: unconstrained Huffman first; its
+             * length MULTISET equals PM@10's whenever it fits depth
+             * <=10 (w8_diff: 660k+ harvested+fuzz, 0 MM, 0 DANGER),
+             * and rank_assign below reassigns every length by
+             * original-freq rank, so per-symbol placement is dead.
+             * Binding/degenerate/overflow cases fall to PM (exact). */
+            if (lzmesh_s3_huff(qfreq, 256u, lens) == 0
+                && lzmesh_pack1_solve(qfreq, 256u, 10u, lens) == 0u)
                 return 0;
             mx = 0u;
             for (i2 = 0u; i2 < 256u; i2++)
@@ -12011,6 +12022,10 @@ static void lzmesh_i5_span(uint32_t *big, uint32_t *small,
                     skip = 1;
             } else if (cur != LZMESH_U2_EMPTY && cur < size
                 && tdist <= 19u
+                /* P12-STORES D5c: i5m-check above heq (bed: i5m0 99.6%
+                 * mixed / 92.6% text of joint passes, takes-IDENT;
+                 * legA env-on preserves old order). */
+                && (i5m[cur] || lzmesh_upins_lega_on())
                 && lzmesh_i5_heq(src, size, cur, i, 3u)) {
                 uint32_t c2 = LZMESH_U2_EMPTY;
                 if (i + 5u <= size)
@@ -13860,7 +13875,10 @@ static int lzmesh_g1_build(const uint8_t *s, size_t n,
             for (i2 = 0u; i2 < 256u; i2++)
                 qfreq[i2] =
                     (freq[i2] != 0u && freq[i2] < qq) ? qq : freq[i2];
-            if (lzmesh_pack1_solve(qfreq, 256u, 10u, h->lens) == 0u)
+            /* P12-W8 skip-solve (h3sym twin of the u35_tryq site;
+             * same proof + rank_assign below reassigns all). */
+            if (lzmesh_s3_huff(qfreq, 256u, h->lens) == 0
+                && lzmesh_pack1_solve(qfreq, 256u, 10u, h->lens) == 0u)
                 return 0;
             mx = 0u;
             for (i2 = 0u; i2 < 256u; i2++)
