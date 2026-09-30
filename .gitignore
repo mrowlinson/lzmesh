@@ -49,6 +49,7 @@ tests/unit/test_m32_slots_fixa
 tests/unit/test_mtf
 tests/unit/test_p11_sb_clz
 tests/unit/test_p12_w8_skip
+tests/unit/test_p13_rank_msort
 tests/unit/test_p2_tailsplit
 tests/unit/test_p3n1_extend
 tests/unit/test_p4n3_gate

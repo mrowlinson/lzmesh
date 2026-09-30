@@ -8230,6 +8230,54 @@ static int lzmesh_u35_cert(const uint8_t *s, size_t n) {
  * (freq desc, sym desc) rank. Larger symbols take shorter lengths
  * among ties. Pure tie permute: counts per length, mfreq, data bits
  * unchanged; only straddling ties move (else exact no-op). */
+/* P13-RANK: bottom-up merge sort by (freq desc, sym desc), same
+ * pattern as lzmesh_pack1_pm_msort. Output is identical to the
+ * insertion sort it replaces: (freq, sym) with distinct syms is a
+ * strict total order, so the sorted permutation is unique and every
+ * correct sort produces it. tmp must hold n entries. */
+static void lzmesh_u35_rank_msort(const uint32_t *freq, uint16_t *list,
+    uint16_t *tmp, unsigned n)
+{
+    uint16_t *a = list;
+    uint16_t *b = tmp;
+    unsigned w;
+    unsigned i;
+    if (n < 2u)
+        return;
+    for (w = 1u; w < n; w <<= 1) {
+        for (i = 0u; i < n; i += w << 1) {
+            unsigned lo = i;
+            unsigned mid = (i + w < n) ? i + w : n;
+            unsigned hi = (i + (w << 1) < n) ? i + (w << 1) : n;
+            unsigned x = lo;
+            unsigned y = mid;
+            unsigned o = lo;
+            while (x < mid && y < hi) {
+                uint16_t lx = a[x];
+                uint16_t ry = a[y];
+                if (freq[ry] > freq[lx]
+                    || (freq[ry] == freq[lx] && ry > lx))
+                    b[o++] = a[y++];
+                else
+                    b[o++] = a[x++];
+            }
+            while (x < mid)
+                b[o++] = a[x++];
+            while (y < hi)
+                b[o++] = a[y++];
+        }
+        {
+            uint16_t *t = a;
+            a = b;
+            b = t;
+        }
+    }
+    if (a != list) {
+        for (i = 0u; i < n; i++)
+            list[i] = a[i];
+    }
+}
+
 static void lzmesh_u35_rank_assign(const uint32_t *freq, uint8_t *lens) {
     unsigned cnt[11];
     unsigned i, rank = 0u;
@@ -8251,18 +8299,9 @@ static void lzmesh_u35_rank_assign(const uint32_t *freq, uint8_t *lens) {
     }
     if (n < 2u)
         return;
-    /* insertion sort by (freq desc, sym desc): n<=256, O(n^2) fine */
-    for (i = 1u; i < n; i++) {
-        uint16_t x = order[i];
-        unsigned j = i;
-        while (j > 0u
-            && (freq[x] > freq[order[j - 1u]]
-                || (freq[x] == freq[order[j - 1u]]
-                    && x > order[j - 1u]))) {
-            order[j] = order[j - 1u];
-            j--;
-        }
-        order[j] = x;
+    { /* P13-RANK: msort == insertion output (total order, unique). */
+        uint16_t rtmp[256];
+        lzmesh_u35_rank_msort(freq, order, rtmp, n);
     }
     for (L = 1u; L <= 10u; L++) {
         unsigned c;
