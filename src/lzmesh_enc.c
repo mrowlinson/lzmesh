@@ -11759,6 +11759,11 @@ static int lzmesh_veb_tc(void);
 static int lzmesh_f2_keyed_on(void);
 static int lzmesh_f3_storeg_on(void);
 static int lzmesh_veb_nostore_armed(void);
+/* P18-FINDER S-SPANHOIST fwd decls (defs below; snapshot at mode init). */
+static int lzmesh_upins_lega_on(void);
+static int lzmesh_t4_h3_on(void);
+static int lzmesh_o3_tmtlo_on(void);
+static uint32_t lzmesh_f1_tmlen(void);
 
 /* I5 store-rule modes (env parsed once per encode; I5-GRID-TEMP knobs). */
 typedef struct {
@@ -11780,6 +11785,12 @@ typedef struct {
     int ho_tc; /* LZMESH_VEB_TC bitmask */
     int ho_ns; /* LZMESH_VEB_NOSTORE list non-empty */
     int ho_trh; /* LZMESH_I5_SLOT set (any value incl empty) */
+    /* P18-FINDER S-SPANHOIST (extends P5-HOIST): j5-joint cached gates,
+     * same read-once values any later per-pos call would read. */
+    int ho_lega; /* LZMESH_UPINS_LEGA */
+    int ho_t4h3; /* T4 h3 tlen gate */
+    int ho_o3; /* LZMESH_O3_TMTLO */
+    uint32_t f1cap; /* LZMESH_F1_TMLEN */
 } lzmesh_i5_mode;
 static int lzmesh_i5_env(const char *name, int dflt) {
     const char *e = getenv(name);
@@ -11803,6 +11814,11 @@ static void lzmesh_i5_mode_init(lzmesh_i5_mode *md) {
     md->ho_tc = lzmesh_veb_tc();
     md->ho_ns = lzmesh_veb_nostore_armed();
     md->ho_trh = lzmesh_i5_tr_armed();
+    /* P18-FINDER S-SPANHOIST (extends P5-HOIST). */
+    md->ho_lega = lzmesh_upins_lega_on();
+    md->ho_t4h3 = lzmesh_t4_h3_on();
+    md->ho_o3 = lzmesh_o3_tmtlo_on();
+    md->f1cap = lzmesh_f1_tmlen();
 }
 static int lzmesh_i5_isrun(const uint8_t *src, size_t size, size_t i) {
     return i + 1u < size && src[i] == src[i + 1u];
@@ -12111,173 +12127,185 @@ static int lzmesh_u9_skipsites_on(void) {
  * s14@25 rl3->5 STORE->SKIP at fixed EMPTY slot/geometry; EMPTY dead).
  * h3 path only; h2 end-1 untouched (boundary open, filed). L9-only. */
 static void lzmesh_i5_span(uint32_t *big, uint32_t *small,
-                           const uint8_t *src, size_t size, size_t i,
+                           const uint8_t *src, size_t size,
+                           size_t span_lo, size_t end,
                            unsigned hb, const unsigned char *i5v,
                            const unsigned char *i5m, uint32_t tdist,
-                           size_t tm, size_t tend, size_t tlo,
+                           size_t tm, size_t tlo,
                            const lzmesh_i5_mode *md) {
-    if (((md->run) & 2) && lzmesh_i5_isrun(src, size, i))
-        return;
-    if (i + 3u <= size) {
-        uint32_t s = lzmesh_u2_h3(
-            (uint32_t)lzmesh_u2_load_n(src + i, 3u));
-        uint32_t cur = small[s];
-        int r = md->rss;
-        int skip = 0;
-        if (r == 5) {
-            size_t tlen = (tend > tm) ? tend - tm : 0u;
-            int end1 = (tend > 0u && i + 1u == tend);
-            if (end1) {
-                /* Q1: runlen = fwd byte-run from i; skip iff >=4. */
-                size_t rl = 1u;
-                while (i + rl < size && src[i + rl] == src[i])
-                    rl++;
-                if (rl >= 4u)
-                    skip = 1;
-            } else if (cur != LZMESH_U2_EMPTY && cur < size
-                && tdist <= 19u
-                /* P12-STORES D5c: i5m-check above heq (bed: i5m0 99.6%
-                 * mixed / 92.6% text of joint passes, takes-IDENT;
-                 * legA env-on preserves old order). */
-                && (i5m[cur] || lzmesh_upins_lega_on())
-                && lzmesh_i5_heq(src, size, cur, i, 3u)) {
-                uint32_t c2 = LZMESH_U2_EMPTY;
-                if (i + 5u <= size)
-                    c2 = big[lzmesh_u2_h2(
-                        lzmesh_u2_load_n(src + i, 5u), hb)];
-                /* UPINS (LANE-U-PINS): h3 C2EMPTY joint arm (legA) REMOVED.
-                 * Overfires: s06-n65536 e09 @372 (skipped 362, oracle
-                 * reads it; c2 EMPTY both sides, 0 5B writers) +
-                 * s03-n262144 e09 @45 (skipped 18, port fell to
-                 * init-0). All L4/M3 TRUE-skip pins moot at tip
-                 * (s02/s14-n512, s04-n46, s00-n128 byte-identical
-                 * with arm off). Full 33->32 NEW 0, holdout 8=8.
-                 * LZMESH_UPINS_LEGA=1 restores the arm. L9-only. */
-                int legA = 0;
-                if (lzmesh_upins_lega_on())
-                    legA = (c2 == LZMESH_U2_EMPTY
-                        && (tlen == 6u || tlen == 7u)
-                        && tlo == tm + 1u
-                        && cur != (uint32_t)tlo);
-                int legB = (i5m[cur]
-                        && (!lzmesh_t4_h3_on()
-                            || tlen <= lzmesh_f1_tmlen())
-                        && (cur != (uint32_t)tlo
-                            || !lzmesh_o3_tmtlo_on()));
-                if (legA || legB)
-                    skip = 1;
+    /* P18-FINDER S-SPANHOIST: loop-inside (was 1 call/pos from catchup);
+     * take-consts hoisted; per-pos body verbatim. */
+    size_t tlen = (end > tm) ? end - tm : 0u;
+    int tlen67 = (tlen == 6u || tlen == 7u);
+    int tlo_tm1 = (tlo == tm + 1u);
+    int td_le19 = (tdist <= 19u);
+    int td_8_19 = (tdist <= 19u && tdist >= 8u);
+    int td_gt8 = (tdist > 8u);
+    int u9 = md->u9;
+    size_t i;
+    for (i = span_lo; i < end; i++) {
+        if (((md->run) & 2) && lzmesh_i5_isrun(src, size, i))
+            continue;
+        if (i + 3u <= size) {
+            uint32_t s = lzmesh_u2_h3(
+                (uint32_t)lzmesh_u2_load_n(src + i, 3u));
+            uint32_t cur = small[s];
+            int r = md->rss;
+            int skip = 0;
+            if (r == 5) {
+                int end1 = (end > 0u && i + 1u == end);
+                if (end1) {
+                    /* Q1: runlen = fwd byte-run from i; skip iff >=4. */
+                    size_t rl = 1u;
+                    while (i + rl < size && src[i + rl] == src[i])
+                        rl++;
+                    if (rl >= 4u)
+                        skip = 1;
+                } else if (cur != LZMESH_U2_EMPTY && cur < size
+                    && td_le19
+                    /* P12-STORES D5c: i5m-check above heq (bed: i5m0 99.6%
+                     * mixed / 92.6% text of joint passes, takes-IDENT;
+                     * legA env-on preserves old order). */
+                    && (i5m[cur] || md->ho_lega)
+                    && lzmesh_i5_heq(src, size, cur, i, 3u)) {
+                    uint32_t c2 = LZMESH_U2_EMPTY;
+                    /* P18-FINDER S-SPANHOIST arm E (HINT-A2): c2 dead in
+                     * stock (legA=0 when lega off); gate hash+load under
+                     * lega. Byte-identical both env states. */
+                    if (md->ho_lega && i + 5u <= size)
+                        c2 = big[lzmesh_u2_h2(
+                            lzmesh_u2_load_n(src + i, 5u), hb)];
+                    /* UPINS (LANE-U-PINS): h3 C2EMPTY joint arm (legA) REMOVED.
+                     * Overfires: s06-n65536 e09 @372 (skipped 362, oracle
+                     * reads it; c2 EMPTY both sides, 0 5B writers) +
+                     * s03-n262144 e09 @45 (skipped 18, port fell to
+                     * init-0). All L4/M3 TRUE-skip pins moot at tip
+                     * (s02/s14-n512, s04-n46, s00-n128 byte-identical
+                     * with arm off). Full 33->32 NEW 0, holdout 8=8.
+                     * LZMESH_UPINS_LEGA=1 restores the arm. L9-only. */
+                    int legA = 0;
+                    if (md->ho_lega)
+                        legA = (c2 == LZMESH_U2_EMPTY
+                            && tlen67
+                            && tlo_tm1
+                            && cur != (uint32_t)tlo);
+                    int legB = (i5m[cur]
+                            && (!md->ho_t4h3
+                                || tlen <= md->f1cap)
+                            && (cur != (uint32_t)tlo
+                                || !md->ho_o3));
+                    if (legA || legB)
+                        skip = 1;
+                }
+            } else if (cur != LZMESH_U2_EMPTY && cur < size) {
+                if (r == 1)
+                    skip = (cur > 1u)
+                        && lzmesh_i5_heq(src, size, cur, i, 3u);
+                else if (r == 2)
+                    skip = (cur > 1u) && i5v[cur]
+                        && lzmesh_i5_heq(src, size, cur, i, 3u);
+                else if (r == 3)
+                    skip = i5m[cur]
+                        && lzmesh_i5_heq(src, size, cur, i, 3u);
+                else if (r == 4)
+                    skip = (tdist > 0u && cur == i - (size_t)tdist);
             }
-        } else if (cur != LZMESH_U2_EMPTY && cur < size) {
-            if (r == 1)
-                skip = (cur > 1u)
-                    && lzmesh_i5_heq(src, size, cur, i, 3u);
-            else if (r == 2)
-                skip = (cur > 1u) && i5v[cur]
-                    && lzmesh_i5_heq(src, size, cur, i, 3u);
-            else if (r == 3)
-                skip = i5m[cur]
-                    && lzmesh_i5_heq(src, size, cur, i, 3u);
-            else if (r == 4)
-                skip = (tdist > 0u && cur == i - (size_t)tdist);
-        }
-        if (md->p0 && s == 0u)
-            skip = 1;
-        /* F2 leg-Dspan: diff-key first-writer on span3 store leg (s07-1980
-         * bypass proven by I5SLOT trace: span3 re-stores what direct3KD
-         * skips). Same LZMESH_F2_KEYED knob. */
-        int kdskip = md->ho_f2
-            && cur != LZMESH_U2_EMPTY
-            && !lzmesh_i5_heq(src, size, cur, i, 3u);
-        /* F3 span leg: match-offset<=1 skips diff-key overwrite (i<=tm:
-         * pre-match, stock). */
-        size_t mo = (i > tm) ? i - tm : 0u;
-        int f3skip = md->ho_f3 && i > tm && mo <= 1u
-            && cur != LZMESH_U2_EMPTY
-            && !lzmesh_i5_heq(src, size, cur, i, 3u);
-        int nsskip = md->ho_ns ? lzmesh_veb_nostore(i) : 0;
-        /* VEB T-COMB span: INT-off1 exact (i==tm+1; span range is always
-         * INT of the current take). LIT/take-start legs N/A here. */
-        int tcskip = (md->ho_tc & 1) && i == tm + 1u
-            && cur != LZMESH_U2_EMPTY
-            && !lzmesh_i5_heq(src, size, cur, i, 3u);
-        if (tcskip)
-            lzmesh_veb_tctr("span3", i, s, cur);
-        if (!skip && !kdskip && !f3skip && !nsskip && !tcskip) {
-            if (md->ho_trh)
-                lzmesh_i5_tr(s, i, "span3");
-            lzmesh_w9_prev_record(md->qlink, cur, i);
-            small[s] = (uint32_t)i;
-        } else {
-            if (md->ho_trh)
-                lzmesh_i5_tr(s, i, nsskip ? "span3NS"
-                              : (tcskip && !skip) ? "span3TC"
-                              : (kdskip && !skip) ? "span3KD"
-                              : (f3skip && !skip) ? "span3F3" : "span3SKIP");
-            if (f3skip && !skip && !kdskip && md->f3skip != NULL)
-                md->f3skip[s] = (uint32_t)i;
-        }
-    }
-    if (i + 5u <= size) {
-        uint32_t s = lzmesh_u2_h2(lzmesh_u2_load_n(src + i, 5u), hb);
-        uint32_t cur = big[s];
-        int r = md->rsp;
-        int skip = 0;
-        if (r == 5) {
-            size_t tlen = (tend > tm) ? tend - tm : 0u;
-            int end1 = (tend > 0u && i + 1u == tend);
-            if (!end1 && cur == LZMESH_U2_EMPTY
-                && (tlen == 6u || tlen == 7u) && tlo == tm + 1u
-                && tdist <= 19u && tdist >= 8u) {
-                int u9 = md->u9;
-                size_t itm = (i > tm) ? i - tm : 0u;
-                size_t tdi = (tend > i) ? tend - i : 0u;
-                int keep = (u9 == 1 && itm >= 4u)
-                    || (u9 == 2 && tdi <= 3u)
-                    || (u9 == 3 && tdist > 8u)
-                    || (u9 == 4 && (itm >= 4u || tdi <= 3u))
-                    || (u9 == 5 && (tdist > 8u || itm > 2u))
-                    || (u9 == 6
-                        && (tdist > 8u || itm > 2u || tdi < 4u));
-                if (keep)
-                    skip = 0;
-                else
-                    skip = 1;
-                if (lzmesh_u9_skipsites_on())
-                    fprintf(stderr,
-                        "U9SKIP/%s i=%u tm=%u tend=%u tlo=%u td=%u tlen=%u\n",
-                        skip ? "skip" : "keep", (unsigned)i, (unsigned)tm,
-                        (unsigned)tend, (unsigned)tlo, (unsigned)tdist,
-                        (unsigned)tlen);
-            }
-        } else if (cur != LZMESH_U2_EMPTY && cur < size) {
-            if (r == 1)
-                skip = (cur > 1u)
-                    && lzmesh_i5_heq(src, size, cur, i, 5u);
-            else if (r == 2)
-                skip = (cur > 1u) && i5v[cur]
-                    && lzmesh_i5_heq(src, size, cur, i, 5u);
-            else if (r == 3)
-                skip = i5m[cur]
-                    && lzmesh_i5_heq(src, size, cur, i, 5u);
-            else if (r == 4)
-                skip = (tdist > 0u && cur == i - (size_t)tdist);
-        }
-        if (md->p0 && s == 0u)
-            skip = 1;
-        if (!skip) {
-            if (md->ho_trh)
-                lzmesh_i5_tr(s, i, "span");
-            big[s] = (uint32_t)i;
-            if (md->h1 && i + 7u <= size) {
-                uint32_t s1 =
-                    lzmesh_u2_h1(lzmesh_u2_load_n(src + i, 7u), hb);
+            if (md->p0 && s == 0u)
+                skip = 1;
+            /* F2 leg-Dspan: diff-key first-writer on span3 store leg (s07-1980
+             * bypass proven by I5SLOT trace: span3 re-stores what direct3KD
+             * skips). Same LZMESH_F2_KEYED knob. */
+            int kdskip = md->ho_f2
+                && cur != LZMESH_U2_EMPTY
+                && !lzmesh_i5_heq(src, size, cur, i, 3u);
+            /* F3 span leg: match-offset<=1 skips diff-key overwrite (i<=tm:
+             * pre-match, stock). */
+            size_t mo = (i > tm) ? i - tm : 0u;
+            int f3skip = md->ho_f3 && i > tm && mo <= 1u
+                && cur != LZMESH_U2_EMPTY
+                && !lzmesh_i5_heq(src, size, cur, i, 3u);
+            int nsskip = md->ho_ns ? lzmesh_veb_nostore(i) : 0;
+            /* VEB T-COMB span: INT-off1 exact (i==tm+1; span range is always
+             * INT of the current take). LIT/take-start legs N/A here. */
+            int tcskip = (md->ho_tc & 1) && i == tm + 1u
+                && cur != LZMESH_U2_EMPTY
+                && !lzmesh_i5_heq(src, size, cur, i, 3u);
+            if (tcskip)
+                lzmesh_veb_tctr("span3", i, s, cur);
+            if (!skip && !kdskip && !f3skip && !nsskip && !tcskip) {
                 if (md->ho_trh)
-                    lzmesh_i5_tr(s1, i, "span1");
-                big[s1] = (uint32_t)i;
+                    lzmesh_i5_tr(s, i, "span3");
+                lzmesh_w9_prev_record(md->qlink, cur, i);
+                small[s] = (uint32_t)i;
+            } else {
+                if (md->ho_trh)
+                    lzmesh_i5_tr(s, i, nsskip ? "span3NS"
+                                  : (tcskip && !skip) ? "span3TC"
+                                  : (kdskip && !skip) ? "span3KD"
+                                  : (f3skip && !skip) ? "span3F3" : "span3SKIP");
+                if (f3skip && !skip && !kdskip && md->f3skip != NULL)
+                    md->f3skip[s] = (uint32_t)i;
             }
-        } else {
-            if (md->ho_trh)
-                lzmesh_i5_tr(s, i, "spanSKIP");
+        }
+        if (i + 5u <= size) {
+            uint32_t s = lzmesh_u2_h2(lzmesh_u2_load_n(src + i, 5u), hb);
+            uint32_t cur = big[s];
+            int r = md->rsp;
+            int skip = 0;
+            if (r == 5) {
+                int end1 = (end > 0u && i + 1u == end);
+                if (!end1 && cur == LZMESH_U2_EMPTY
+                    && tlen67 && tlo_tm1 && td_8_19) {
+                    size_t itm = (i > tm) ? i - tm : 0u;
+                    size_t tdi = (end > i) ? end - i : 0u;
+                    int keep = (u9 == 1 && itm >= 4u)
+                        || (u9 == 2 && tdi <= 3u)
+                        || (u9 == 3 && td_gt8)
+                        || (u9 == 4 && (itm >= 4u || tdi <= 3u))
+                        || (u9 == 5 && (td_gt8 || itm > 2u))
+                        || (u9 == 6
+                            && (td_gt8 || itm > 2u || tdi < 4u));
+                    if (keep)
+                        skip = 0;
+                    else
+                        skip = 1;
+                    if (lzmesh_u9_skipsites_on())
+                        fprintf(stderr,
+                            "U9SKIP/%s i=%u tm=%u end=%u tlo=%u td=%u tlen=%u\n",
+                            skip ? "skip" : "keep", (unsigned)i, (unsigned)tm,
+                            (unsigned)end, (unsigned)tlo, (unsigned)tdist,
+                            (unsigned)tlen);
+                }
+            } else if (cur != LZMESH_U2_EMPTY && cur < size) {
+                if (r == 1)
+                    skip = (cur > 1u)
+                        && lzmesh_i5_heq(src, size, cur, i, 5u);
+                else if (r == 2)
+                    skip = (cur > 1u) && i5v[cur]
+                        && lzmesh_i5_heq(src, size, cur, i, 5u);
+                else if (r == 3)
+                    skip = i5m[cur]
+                        && lzmesh_i5_heq(src, size, cur, i, 5u);
+                else if (r == 4)
+                    skip = (tdist > 0u && cur == i - (size_t)tdist);
+            }
+            if (md->p0 && s == 0u)
+                skip = 1;
+            if (!skip) {
+                if (md->ho_trh)
+                    lzmesh_i5_tr(s, i, "span");
+                big[s] = (uint32_t)i;
+                if (md->h1 && i + 7u <= size) {
+                    uint32_t s1 =
+                        lzmesh_u2_h1(lzmesh_u2_load_n(src + i, 7u), hb);
+                    if (md->ho_trh)
+                        lzmesh_i5_tr(s1, i, "span1");
+                    big[s1] = (uint32_t)i;
+                }
+            } else {
+                if (md->ho_trh)
+                    lzmesh_i5_tr(s, i, "spanSKIP");
+            }
         }
     }
 }
@@ -12399,13 +12427,13 @@ static void lzmesh_i5_catchup(int32_t *head, int32_t *prev,
             v += (size_t)1u + ((v - ins) >> 8);
         }
     }
-    for (i = span_lo; i < end; i++) {
-        if (level == 1) {
+    if (level == 1) {
+        for (i = span_lo; i < end; i++)
             lzmesh_s2_mx_link(head, prev, src, size, i, hb); /* S2 */
-        } else {
-            lzmesh_i5_span(big, small, src, size, i, hb, i5v, i5m,
-                                 tdist, m, end, span_lo, md);
-        }
+    } else {
+        /* P18-FINDER S-SPANHOIST: single range call (loop moved inside). */
+        lzmesh_i5_span(big, small, src, size, span_lo, end, hb, i5v,
+                       i5m, tdist, m, span_lo, md);
     }
     nextv = m;
     if (!win256) /* P17-FINDER win256: no else-leg fires (see above) */
