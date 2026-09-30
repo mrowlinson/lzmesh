@@ -8906,24 +8906,32 @@ int lzmesh_u36_want(const uint8_t *src, size_t size, int level) {
                                1);
 }
 
-/* LSB-first bit put into zeroed lane base; *pos advances.
- * P2-bitio: byte-at-a-time OR (same bits ORed, same *pos advance). */
+/* LSB-first bit put into lane base; *pos advances.
+ * P2-bitio shape (same bits ORed, same *pos advance); P15-PACK P5
+ * implements it as one masked 64-bit RMW (was per-byte loop). */
 static void lzmesh_u35_put(uint8_t *base, unsigned *pos, unsigned val,
                            unsigned n) {
+    /* P15-PACK P5: word RMW (was per-byte loop). Sole caller: h3 suffix
+     * (sb<=31). n==0 no-op, n>32 fail-safe two-put (acc_put precedent)
+     * preserve the generic contract. */
     unsigned p = *pos;
     unsigned b = p >> 3;
     unsigned sh = p & 7u;
-    *pos = p + n;
-    while (n > 0u) {
-        unsigned take = 8u - sh;
-        if (take > n)
-            take = n;
-        base[b] |= (uint8_t)(((val & ((1u << take) - 1u))) << sh);
-        val >>= take;
-        n -= take;
-        b++;
-        sh = 0u;
+    uint32_t mask;
+    uint64_t w, v;
+    if (n == 0u)
+        return;
+    if (n > 32u) {
+        lzmesh_u35_put(base, pos, val, 32u);
+        lzmesh_u35_put(base, pos, 0u, n - 32u);
+        return;
     }
+    mask = (n >= 32u) ? 0xFFFFFFFFu : (uint32_t)((1u << n) - 1u);
+    v = ((uint64_t)(val & mask)) << sh;
+    *pos = p + n;
+    memcpy(&w, base + b, sizeof w);
+    w |= v;
+    memcpy(base + b, &w, sizeof w);
 }
 
 /* P6-W4 word accumulator: per-lane 64b bit buffer, 4B word flush.
@@ -15262,8 +15270,9 @@ static size_t lzmesh_g1_emit(uint8_t *dst, size_t dst_capacity,
         else if (mode[s] == 1u)
             dst[b++] = sp[0];
         else {
-            for (i = 0u; i < strn[s]; i++)
-                dst[b++] = sp[i];
+            /* P15-PACK P2b (was byte loop). */
+            memmove(dst + b, sp, strn[s]);
+            b += strn[s];
         }
     }
     if (b != bo)
@@ -15272,12 +15281,12 @@ static size_t lzmesh_g1_emit(uint8_t *dst, size_t dst_capacity,
         start[k] = (unsigned)(b - bo);
         b += laneb[k];
         pos[k] = 0u;
+        lastL[k] = 0u; /* P15-PACK P1: init precedes fused emit stores. */
         uacc[k].acc = 0u; /* P6-W4 */
         uacc[k].nbits = 0u;
         uacc[k].out = dst + bo + start[k];
     }
-    for (i = 0u; i < payload; i++)
-        dst[bo + i] = 0u;
+    memset(dst + bo, 0, payload); /* P15-PACK P2a (was byte loop). */
     for (s = 0u; s < 4u; s++) {
         const uint8_t *sp = str[s];
         if (mode[s] != 2u)
@@ -15290,9 +15299,12 @@ static size_t lzmesh_g1_emit(uint8_t *dst, size_t dst_capacity,
             lzmesh_u35_acc_put(&uacc[i & 7u], &pos[i & 7u],
                                h[s].mcodes[h[s].vals[i]],
                                h[s].mlens[h[s].vals[i]]);
-        for (i = 0u; i < strn[s]; i++)
+        for (i = 0u; i < strn[s]; i++) {
             lzmesh_u35_acc_put(&uacc[i & 7u], &pos[i & 7u],
                                h[s].codes[sp[i]], h[s].lens[sp[i]]);
+            /* P15-PACK P1: lastL fused here (was separate walk below). */
+            lastL[i & 7u] = h[s].lens[sp[i]];
+        }
     }
     for (k = 0u; k < 8u; k++)
         lzmesh_u35_acc_flush(&uacc[k]); /* P6-W4: drain pre-suffix loop */
@@ -15317,15 +15329,8 @@ static size_t lzmesh_g1_emit(uint8_t *dst, size_t dst_capacity,
     for (k = 0u; k < 8u; k++) {
         if (pos[k] != bitc[k])
             return 0u;
-        lastL[k] = 0u;
     }
-    for (s = 0u; s < 4u; s++) {
-        const uint8_t *sp = str[s];
-        if (mode[s] != 2u)
-            continue;
-        for (i = 0u; i < strn[s]; i++)
-            lastL[i & 7u] = h[s].lens[sp[i]];
-    }
+    /* P15-PACK P1: lastL walk deleted (fused into vals-emit loop). */
     /* S3 V-OR padsim override (U5 per-lane verified-only; unverified
      * lanes keep PAD1/B-TAB). */
     {
@@ -16723,8 +16728,9 @@ static size_t lzmesh_h3_huf_block(const uint8_t *lit, size_t li,
         else if (mode[s] == 1u)
             dst[b++] = sp[0];
         else {
-            for (i = 0u; i < strn[s]; i++)
-                dst[b++] = sp[i];
+            /* P15-PACK P2b (was byte loop). */
+            memmove(dst + b, sp, strn[s]);
+            b += strn[s];
         }
     }
     if (b != bo)
@@ -16733,12 +16739,12 @@ static size_t lzmesh_h3_huf_block(const uint8_t *lit, size_t li,
         startb[k] = (unsigned)(b - bo);
         b += laneb[k];
         pos[k] = 0u;
+        lastL[k] = 0u; /* P15-PACK P1: init precedes fused emit stores. */
         uacc[k].acc = 0u; /* P6-W4 */
         uacc[k].nbits = 0u;
         uacc[k].out = dst + bo + startb[k];
     }
-    for (i = 0u; i < payload; i++)
-        dst[bo + i] = 0u;
+    memset(dst + bo, 0, payload); /* P15-PACK P2a (was byte loop). */
     for (s = 0u; s < 4u; s++) {
         const uint8_t *sp = str[s];
         if (mode[s] != 2u)
@@ -16751,9 +16757,12 @@ static size_t lzmesh_h3_huf_block(const uint8_t *lit, size_t li,
             lzmesh_u35_acc_put(&uacc[i & 7u], &pos[i & 7u],
                                h[s].mcodes[h[s].vals[i]],
                                h[s].mlens[h[s].vals[i]]);
-        for (i = 0u; i < strn[s]; i++)
+        for (i = 0u; i < strn[s]; i++) {
             lzmesh_u35_acc_put(&uacc[i & 7u], &pos[i & 7u],
                                h[s].codes[sp[i]], h[s].lens[sp[i]]);
+            /* P15-PACK P1: lastL fused here (was separate walk below). */
+            lastL[i & 7u] = h[s].lens[sp[i]];
+        }
     }
     for (k = 0u; k < 8u; k++)
         lzmesh_u35_acc_flush(&uacc[k]); /* P6-W4: drain pre-suffix loop */
@@ -16774,15 +16783,8 @@ static size_t lzmesh_h3_huf_block(const uint8_t *lit, size_t li,
     for (k = 0u; k < 8u; k++) {
         if (pos[k] != bitc[k])
             return 0u;
-        lastL[k] = 0u;
     }
-    for (s = 0u; s < 4u; s++) {
-        const uint8_t *sp = str[s];
-        if (mode[s] != 2u)
-            continue;
-        for (i = 0u; i < strn[s]; i++)
-            lastL[i & 7u] = h[s].lens[sp[i]];
-    }
+    /* P15-PACK P1: lastL walk deleted (fused into vals-emit loop). */
     /* V2small padsim override (wave-U u-e05trio; unverified lanes
      * keep PAD1/B-TAB). U5 NOT wired here (unbedded on H3 path). */
     /* AA-E01BIG: V1 multi-HUF after V2small (default on,
@@ -17118,8 +17120,7 @@ static size_t lzmesh_h3_multi(const uint8_t *src, size_t size,
                         p += laneb[k];
                         posb[k] = 0u;
                     }
-                    for (t = 0u; t < payload; t++)
-                        dst[s + bo + t] = 0u;
+                    memset(dst + s + bo, 0, payload); /* P15-PACK P2a. */
                     for (t = blks[i].start; t < blks[i].end; t++) {
                         unsigned sb, low, bb;
                         uint32_t suf, kk;
@@ -17196,6 +17197,60 @@ static void *lzmesh_s4_alloc32(void **raw, size_t n) {
     *raw = p;
     a = ((uintptr_t)p + 31u) & ~(uintptr_t)31u;
     return (void *)a;
+}
+
+/* P15-P0: F1 fixpoint no-op predicate (HINT-P15-FIXPT M1,
+ * ANSWER-p14-struct-1; 2-site audit + proof verified first-hand here).
+ * cuts touch u37_parse at exactly 2 sites (S-reset, S-trunc); pass-1
+ * invariant: litrun == pos - last_take_end. P0: every it0 cut is
+ * take-interior (never queried: pos jumps over) or a take end
+ * (reset no-op: litrun already 0) => re-parse takes == pass-1 takes
+ * => skip the it-loop (L9: + split-stability, pass 2 vs 1).
+ * O(ntok+h3n), zero per-pos cost. Census: 14100 cells, 0 violations,
+ * fires incl all 6 bench cells. */
+typedef struct {
+    const lzmesh_h3_blk *h3b;
+    const size_t *l1;
+    int isl1;
+} p15_p0cuts_t;
+static size_t p15_p0_cut_at(const p15_p0cuts_t *s, size_t j) {
+    return s->isl1 ? s->l1[j] : s->h3b[j + 1u].off;
+}
+/* Returns 1 when the it-loop is provably a no-op (skip it). */
+static int p15_p0_fire(const lzmesh_u37_tok *toks, size_t ntok,
+                       const p15_p0cuts_t *s, size_t ncut) {
+    size_t cur = 1u, d = 0u, k;
+    size_t st = 0u, en = 1u;
+    if (ntok > 0u) {
+        st = cur + (size_t)toks[0].litrun;
+        en = st + (size_t)toks[0].mlen;
+    }
+    for (k = 0u; k < ncut; k++) {
+        size_t c = p15_p0_cut_at(s, k);
+        while (d < ntok && en <= c) {
+            if (en == c)
+                break;
+            d++;
+            cur = en;
+            if (d < ntok) {
+                st = cur + (size_t)toks[d].litrun;
+                en = st + (size_t)toks[d].mlen;
+            } else {
+                st = (size_t)-1;
+                en = (size_t)-1;
+            }
+        }
+        if (d < ntok && en == c)
+            continue; /* take end: reset no-op (litrun 0) */
+        if (d < ntok && st < c && c < en)
+            continue; /* interior: never queried (pos jumps over) */
+        if (d < ntok && st == c && st == cur)
+            continue; /* abutting take start == prev end */
+        if (c <= 1u)
+            continue; /* parse-start edge */
+        return 0; /* lit-gap cut: reset/trunc live, must re-parse */
+    }
+    return 1;
 }
 
 /* Parse + layout + gate; emit iff dst != NULL. Returns bytes (need)
@@ -17316,6 +17371,7 @@ static size_t lzmesh_u37_build(const uint8_t *src, size_t size,
         if (f1 && h3n > 1u) {
             int conv = 0;
             int it;
+            int p0skip = 0; /* P15-P0: provable no-op fixpoint skip */
             /* Z-E01PAIR R2: L1 resets only at cuts ending a take-rich
              * pass-1 block (h3b take range nonempty). Take-free blocks
              * keep the strided walk: oracle never visits there (s15-blk5
@@ -17343,6 +17399,65 @@ static size_t lzmesh_u37_build(const uint8_t *src, size_t size,
                     free(l1cuts);
                     l1cuts = NULL;
                 }
+            }
+            /* P15-P0: evaluate over it0 cuts (toks/h3b = pass-1).
+             * L1 uses the rich-only l1cuts actually passed to parse. */
+            if (!conv) {
+                p15_p0cuts_t pcs;
+                size_t pcn;
+                int p0ok = 0;
+                if (level == 1) {
+                    pcs.h3b = NULL;
+                    pcs.l1 = l1cuts;
+                    pcs.isl1 = 1;
+                    pcn = l1ncut;
+                    if (l1cuts != NULL)
+                        p0ok = p15_p0_fire(toks, ntok, &pcs, pcn);
+                } else {
+                    pcs.h3b = h3b;
+                    pcs.l1 = NULL;
+                    pcs.isl1 = 0;
+                    pcn = h3n - 1u;
+                    p0ok = p15_p0_fire(toks, ntok, &pcs, pcn);
+                }
+                if (p0ok) {
+                    if (level == 9) {
+                        /* Split-stability (pass 2 vs 1): stock it0
+                         * re-splits pass 2; adopt iff offs agree
+                         * (exact it0-conv motion), else full loop. */
+                        lzmesh_h3_blk *p0b2 = NULL;
+                        size_t p0n2 = lzmesh_h3_split(toks, h3nr, h3tr,
+                                                     size, level, &p0b2,
+                                                     2);
+                        if (p0n2 == h3n && p0b2 != NULL) {
+                            size_t pj;
+                            int pok = 1;
+                            for (pj = 0u; pj < h3n; pj++) {
+                                if (p0b2[pj].off != h3b[pj].off) {
+                                    pok = 0;
+                                    break;
+                                }
+                            }
+                            if (pok) {
+                                free(h3b);
+                                h3b = p0b2;
+                                h3n = p0n2;
+                                p0skip = 1;
+                            } else {
+                                free(p0b2);
+                            }
+                        } else {
+                            if (p0b2 != NULL)
+                                free(p0b2);
+                        }
+                    } else {
+                        /* L5/L1: same split pass => h3b2==h3b1 when
+                         * takes ident => it0-conv guaranteed. */
+                        p0skip = 1;
+                    }
+                }
+                if (p0skip)
+                    conv = 1;
             }
             for (it = 0; it < 2 && !conv; it++) {
                 size_t *cuts = (size_t *)malloc(h3n * sizeof *cuts);
