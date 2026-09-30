@@ -5007,20 +5007,21 @@ int lzmesh_u29_trail_layout(const uint8_t *src, size_t size,
     if (tokc == NULL || litc == NULL || lenC == NULL || lenB == NULL
         || modes == NULL || bo == NULL || fo == NULL)
         return 0;
-    kk = lzmesh_u19_runs(src, size, NULL);
-    if (kk < 2u)
-        return 0;
-    if (kk > 21845u)
-        return 0;
+    /* P16-A: u19 rescan fuse (one scan, not two; see script). */
     nb = 0u;
     pos = 0u;
-    while (pos < size && nb < kk) {
+    while (pos < size && nb < 21846u) {
         buf[nb++] = pos;
         q = pos + 1u;
         while (q < size && src[q] == src[pos])
             q++;
         pos = q;
     }
+    kk = nb;
+    if (kk < 2u)
+        return 0;
+    if (kk > 21845u)
+        return 0;
     if (nb != kk)
         return 0;
     /* trailing suffix = maximal short-run tail; live = runs[0..nl). */
@@ -5427,20 +5428,21 @@ int lzmesh_u30_tc1_layout(const uint8_t *src, size_t size,
     if (tokc == NULL || litc == NULL || lenC == NULL || lenB == NULL
         || modes == NULL || bo == NULL || fo == NULL)
         return 0;
-    kk = lzmesh_u19_runs(src, size, NULL);
-    if (kk < 2u)
-        return 0;
-    if (kk > 21845u)
-        return 0;
+    /* P16-A: u19 rescan fuse (one scan, not two; see script). */
     nb = 0u;
     pos = 0u;
-    while (pos < size && nb < kk) {
+    while (pos < size && nb < 21846u) {
         buf[nb++] = pos;
         q = pos + 1u;
         while (q < size && src[q] == src[pos])
             q++;
         pos = q;
     }
+    kk = nb;
+    if (kk < 2u)
+        return 0;
+    if (kk > 21845u)
+        return 0;
     if (nb != kk)
         return 0;
     /* trailing suffix = maximal short-run tail; live = runs[0..nl). */
@@ -5937,20 +5939,21 @@ int lzmesh_u32_tc2_layout(const uint8_t *src, size_t size,
     if (tokc == NULL || litc == NULL || lenC == NULL || lenB == NULL
         || modes == NULL || bo == NULL || fo == NULL)
         return 0;
-    kk = lzmesh_u19_runs(src, size, NULL);
-    if (kk < 2u)
-        return 0;
-    if (kk > 21845u)
-        return 0;
+    /* P16-A: u19 rescan fuse (one scan, not two; see script). */
     nb = 0u;
     pos = 0u;
-    while (pos < size && nb < kk) {
+    while (pos < size && nb < 21846u) {
         buf[nb++] = pos;
         q = pos + 1u;
         while (q < size && src[q] == src[pos])
             q++;
         pos = q;
     }
+    kk = nb;
+    if (kk < 2u)
+        return 0;
+    if (kk > 21845u)
+        return 0;
     if (nb != kk)
         return 0;
     /* trailing suffix = maximal short-run tail; live = runs[0..nl). */
@@ -8958,6 +8961,9 @@ static void lzmesh_u35_acc_put(lzmesh_u35_acc *a, unsigned *pos,
         lzmesh_u35_acc_put(a, pos, 0u, n - 32u);
         return;
     }
+    /* P16-PACK T2a KILLED (unit contract): mask removal broke u35acc
+     * random-diff (generic val/n contract; real-codec proof insufficient).
+     * Mask restored; T2b (lastL-direct) stands alone. */
     if (n == 32u)
         v = (uint64_t)val;
     else
@@ -12802,17 +12808,28 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
         }
     }
     if (lzmesh_i5_on(level)) { /* I5: visited + take-m bitmaps */
+        /* P16-FINDER QNULL: qlink is read ONLY by the W9 walk (gated
+         * LZMESH_W9_QPICK, default 0, falsified wave-W) and the W9Q
+         * trace fprintf (gated (long)pos==LZMESH_W9_QTRACE, default
+         * -1, unreachable since (long)pos>=0). Unarmed => every
+         * write dead: w9_prev_record NULL-safe, walk/trace blocks
+         * sprev!=NULL-guarded. Skip the 4n alloc+memset + ~1M
+         * stores/enc (text-256k). Armed => stock path verbatim
+         * (alloc+memset+writes+reads identical, incl OOM shape). */
+        int w9armed = (lzmesh_w9_qpick_on()
+            || lzmesh_w9_qtrace() != -1L) ? 1 : 0;
         i5v = (unsigned char *)calloc(size > 0u ? size : 1u, 1u);
         i5m = (unsigned char *)calloc(size > 0u ? size : 1u, 1u);
         i5ts = (unsigned char *)calloc(size > 0u ? size : 1u, 1u);
         /* P10-TABINIT Q1: every byte overwritten with FF below; calloc
          * zeroing was pure waste (8n traffic for a 4n array). malloc +
          * memset halves qlink traffic; fully overwritten => byte-risk 0. */
-        qlink = (uint32_t *)malloc((size > 0u ? size : 1u) *
-                                   sizeof *qlink);
+        if (w9armed)
+            qlink = (uint32_t *)malloc((size > 0u ? size : 1u) *
+                                       sizeof *qlink);
         ysp = (unsigned char *)calloc(size > 0u ? 2u * size : 2u, 1u);
         if (i5v == NULL || i5m == NULL || i5ts == NULL
-            || qlink == NULL || ysp == NULL) {
+            || (w9armed && qlink == NULL) || ysp == NULL) {
             lzmesh_k2_free(&k2q); lzmesh_t4_free(&t4q);
             free(i5v);
             free(i5m);
@@ -12823,7 +12840,8 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
         }
         /* chain EMPTY is 0xFFFFFFFF: full overwrite (malloc above). */
         /* P8-T2: memset-class fill, same bytes/bounds. */
-        memset(qlink, 0xFF, size * sizeof *qlink);
+        if (w9armed)
+            memset(qlink, 0xFF, size * sizeof *qlink);
         i5md.qlink = qlink;
         i5md.ycon = ysp;
         i5md.ywin = ysp + (size > 0u ? size : 1u);
@@ -15302,9 +15320,25 @@ static size_t lzmesh_g1_emit(uint8_t *dst, size_t dst_capacity,
         for (i = 0u; i < strn[s]; i++) {
             lzmesh_u35_acc_put(&uacc[i & 7u], &pos[i & 7u],
                                h[s].codes[sp[i]], h[s].lens[sp[i]]);
-            /* P15-PACK P1: lastL fused here (was separate walk below). */
-            lastL[i & 7u] = h[s].lens[sp[i]];
+            /* P16-PACK T2b: lastL-direct (store deleted; computed below). */
         }
+    }
+    /* P16-PACK T2b: lastL-direct (last write wins; 8 computes vs 70k stores;
+     * bed2 strn=69889 tx-e09; FULL-gated). */
+    for (k = 0u; k < 8u; k++) {
+        unsigned ll = 0u;
+        for (s = 4u; s > 0u; ) {
+            size_t last;
+            --s;
+            if (mode[s] != 2u)
+                continue;
+            if (strn[s] > k) {
+                last = strn[s] - 1u - ((strn[s] - 1u - k) & 7u);
+                ll = h[s].lens[str[s][last]];
+                break;
+            }
+        }
+        lastL[k] = (uint8_t)ll;
     }
     for (k = 0u; k < 8u; k++)
         lzmesh_u35_acc_flush(&uacc[k]); /* P6-W4: drain pre-suffix loop */
@@ -16578,27 +16612,44 @@ static int lzmesh_h3_probe(const uint8_t *src,
  * for one COMP block; emits header+streams+lanes+idx+footer (no END).
  * Returns fo+10 on success, 0 for RAW fallback (no-HUF, rollback,
  * gates fail). dst==NULL size-only. Caller gates level. */
-static size_t lzmesh_h3_huf_block(const uint8_t *lit, size_t li,
-                                  const uint8_t *tok, size_t ti,
-                                  const uint8_t *len, size_t eni,
-                                  const uint8_t *dsym, size_t di,
-                                  const lzmesh_u37_tok *toks, size_t start,
-                                  size_t end, uint32_t litc, uint32_t tokc,
-                                  uint32_t lenc, uint32_t distc, uint32_t ds,
-                                  int is_first, uint8_t *dst,
-                                  size_t dst_capacity) {
+/* P16-PACK T1: huf measure/emit split (static-free table amortization).
+ * loop2 calls h3_huf_block as a back-to-back measure+emit pair with
+ * identical inputs (bed: every table built 2x, 32/32 pairwise-identical
+ * on tx-e09). The split shares one measure via a caller-owned ctx
+ * (stack, thread-safe, no statics). The wrapper keeps fused behavior
+ * for all other callers. */
+typedef struct {
+    lzmesh_g1_huff h[4];
+    unsigned mode[4];
+    unsigned bitc[8];
+    unsigned laneb[8];
+    unsigned sufbits[8];
+    uint8_t idx[24];
+    unsigned idxsz;
+    uint32_t bo;
+    uint32_t fo;
+    uint32_t payload;
+    uint32_t modes;
+} p16_huf_ctx;
+
+static size_t p16_huf_measure(const uint8_t *lit, size_t li,
+                              const uint8_t *tok, size_t ti,
+                              const uint8_t *len, size_t eni,
+                              const uint8_t *dsym, size_t di,
+                              const lzmesh_u37_tok *toks, size_t start,
+                              size_t end, uint32_t litc, uint32_t tokc,
+                              uint32_t lenc, uint32_t distc, uint32_t ds,
+                              int is_first, p16_huf_ctx *ctx) {
     const uint8_t *str[4];
     size_t strn[4];
     lzmesh_g1_huff h[4];
     unsigned mode[4];
     unsigned s, i, k;
-    unsigned bitc[8], laneb[8], startb[8], pos[8], sufbits[8];
-    lzmesh_u35_acc uacc[8]; /* P6-W4 */
-    uint8_t lastL[8];
+    unsigned bitc[8], laneb[8], sufbits[8];
     uint8_t idx[24];
     unsigned idxsz;
     uint32_t bo, fo, payload = 0u, modes;
-    size_t b, t;
+    size_t t;
     if (lit == NULL || tok == NULL || len == NULL || dsym == NULL
         || toks == NULL)
         return 0u;
@@ -16715,10 +16766,66 @@ static size_t lzmesh_h3_huf_block(const uint8_t *lit, size_t li,
                                  lit, tok, len))
             return 0u;
     }
-    if (dst == NULL)
-        return (size_t)fo + 10u;
+    if (ctx != NULL) {
+        memcpy(ctx->h, h, sizeof ctx->h);
+        memcpy(ctx->mode, mode, sizeof ctx->mode);
+        memcpy(ctx->bitc, bitc, sizeof ctx->bitc);
+        memcpy(ctx->laneb, laneb, sizeof ctx->laneb);
+        memcpy(ctx->sufbits, sufbits, sizeof ctx->sufbits);
+        memcpy(ctx->idx, idx, (size_t)idxsz);
+        ctx->idxsz = idxsz;
+        ctx->bo = bo;
+        ctx->fo = fo;
+        ctx->payload = payload;
+        ctx->modes = modes;
+    }
+    return (size_t)fo + 10u;
+}
+
+static size_t p16_huf_emit(uint8_t *dst, size_t dst_capacity,
+                           const uint8_t *lit, size_t li,
+                           const uint8_t *tok, size_t ti,
+                           const uint8_t *len, size_t eni,
+                           const uint8_t *dsym, size_t di,
+                           const lzmesh_u37_tok *toks, size_t start,
+                           size_t end, uint32_t litc, uint32_t tokc,
+                           uint32_t lenc, uint32_t distc, uint32_t ds,
+                           const p16_huf_ctx *ctx) {
+    const uint8_t *str[4];
+    size_t strn[4];
+    lzmesh_g1_huff h[4];
+    unsigned mode[4];
+    unsigned s, i, k;
+    unsigned bitc[8], laneb[8], startb[8], pos[8], sufbits[8];
+    lzmesh_u35_acc uacc[8]; /* P6-W4 */
+    uint8_t lastL[8];
+    uint8_t idx[24];
+    unsigned idxsz;
+    uint32_t bo, fo, payload, modes;
+    size_t b, t;
+    if (dst == NULL || ctx == NULL)
+        return 0u;
+    memcpy(h, ctx->h, sizeof h);
+    memcpy(mode, ctx->mode, sizeof mode);
+    memcpy(bitc, ctx->bitc, sizeof bitc);
+    memcpy(laneb, ctx->laneb, sizeof laneb);
+    memcpy(sufbits, ctx->sufbits, sizeof sufbits);
+    memcpy(idx, ctx->idx, (size_t)ctx->idxsz);
+    idxsz = ctx->idxsz;
+    bo = ctx->bo;
+    fo = ctx->fo;
+    payload = ctx->payload;
+    modes = ctx->modes;
     if (dst_capacity < (size_t)fo + 10u)
         return 0u;
+    str[0] = lit;
+    str[1] = tok;
+    str[2] = len;
+    str[3] = dsym;
+    strn[0] = li;
+    strn[1] = ti;
+    strn[2] = eni;
+    strn[3] = di;
     lzmesh_u7_comp_header_emit(dst, ds, bo, fo);
     b = 9u;
     for (s = 0u; s < 4u; s++) {
@@ -16760,9 +16867,25 @@ static size_t lzmesh_h3_huf_block(const uint8_t *lit, size_t li,
         for (i = 0u; i < strn[s]; i++) {
             lzmesh_u35_acc_put(&uacc[i & 7u], &pos[i & 7u],
                                h[s].codes[sp[i]], h[s].lens[sp[i]]);
-            /* P15-PACK P1: lastL fused here (was separate walk below). */
-            lastL[i & 7u] = h[s].lens[sp[i]];
+            /* P16-PACK T2b: lastL-direct (store deleted; computed below). */
         }
+    }
+    /* P16-PACK T2b: lastL-direct (last write wins; 8 computes vs 70k stores;
+     * bed2 strn=69889 tx-e09; FULL-gated). */
+    for (k = 0u; k < 8u; k++) {
+        unsigned ll = 0u;
+        for (s = 4u; s > 0u; ) {
+            size_t last;
+            --s;
+            if (mode[s] != 2u)
+                continue;
+            if (strn[s] > k) {
+                last = strn[s] - 1u - ((strn[s] - 1u - k) & 7u);
+                ll = h[s].lens[str[s][last]];
+                break;
+            }
+        }
+        lastL[k] = (uint8_t)ll;
     }
     for (k = 0u; k < 8u; k++)
         lzmesh_u35_acc_flush(&uacc[k]); /* P6-W4: drain pre-suffix loop */
@@ -16849,6 +16972,28 @@ static size_t lzmesh_h3_huf_block(const uint8_t *lit, size_t li,
     return (size_t)fo + 10u;
 }
 
+static size_t lzmesh_h3_huf_block(const uint8_t *lit, size_t li,
+                                  const uint8_t *tok, size_t ti,
+                                  const uint8_t *len, size_t eni,
+                                  const uint8_t *dsym, size_t di,
+                                  const lzmesh_u37_tok *toks, size_t start,
+                                  size_t end, uint32_t litc, uint32_t tokc,
+                                  uint32_t lenc, uint32_t distc, uint32_t ds,
+                                  int is_first, uint8_t *dst,
+                                  size_t dst_capacity) {
+    p16_huf_ctx ctx;
+    size_t hsz = p16_huf_measure(lit, li, tok, ti, len, eni, dsym, di,
+                                 toks, start, end, litc, tokc, lenc,
+                                 distc, ds, is_first, &ctx);
+    if (hsz == 0u)
+        return 0u;
+    if (dst == NULL)
+        return hsz;
+    return p16_huf_emit(dst, dst_capacity, lit, li, tok, ti, len, eni,
+                        dsym, di, toks, start, end, litc, tokc, lenc,
+                        distc, ds, &ctx);
+}
+
 /* GEN multi validate + emit (Q2 per-block HUF + RAW fallback,
  * global TIER-2 on RAW keep). Returns need
  * (outpos+1) on success (keep), 0 on decline/fail.
@@ -16889,6 +17034,32 @@ static size_t lzmesh_f1_rescue(const uint8_t *lit, uint32_t litc,
     return hsz;
 }
 
+/* P16-FINDER MEMO: per-block probe memo. h3_multi probed every
+ * block twice (measure loop, then emit loop) with identical inputs
+ * and discarded the first result ((void) outs). Probe+rescue are
+ * pure in-process (no globals/statics on their paths; src/toks/blks
+ * unmutated between loops) => loop-2 recompute is dead. Save
+ * outs+lanes per block in loop 1 (sok==1 only: pre-publish outs are
+ * indeterminate), restore in loop 2. Any malloc fail => per-block
+ * stock re-probe (fail-safe, bytes identical incl OOM shape). */
+typedef struct {
+    int ok; /* saved (else loop 2 re-probes stock) */
+    int is_comp, sok;
+    uint32_t fo, bo, modes, tokc, lenc, litc, distc;
+    unsigned laneb[8];
+    uint8_t idx[24];
+    unsigned idxsz;
+    size_t rhsz;
+    uint8_t *lanes; /* lit[litc]+tok[tokc]+len[lenc]+dsym[distc] */
+} p16_mblk;
+static void p16_mblk_free(p16_mblk *mb, size_t n) {
+    size_t j;
+    if (mb == NULL)
+        return;
+    for (j = 0u; j < n; j++)
+        free(mb[j].lanes);
+    free(mb);
+}
 static size_t lzmesh_h3_multi(const uint8_t *src, size_t size,
                               const lzmesh_u37_tok *toks,
                               const lzmesh_h3_blk *blks, size_t nblocks,
@@ -16897,6 +17068,7 @@ static size_t lzmesh_h3_multi(const uint8_t *src, size_t size,
                               size_t dst_capacity, int level,
                               int *rep_bad) {
     size_t i, outpos = 0u, need = 1u;
+    p16_mblk *p16_mb = NULL;
     uint32_t dec_rec[4];
     dec_rec[0] = 1u;
     dec_rec[1] = 1u;
@@ -16907,6 +17079,8 @@ static size_t lzmesh_h3_multi(const uint8_t *src, size_t size,
     if (src == NULL || toks == NULL || blks == NULL || nblocks == 0u
         || lit == NULL || tok == NULL || len == NULL || dsym == NULL)
         return 0u;
+    p16_mb = (p16_mblk *)calloc(nblocks, sizeof *p16_mb);
+    /* calloc fail => NULL => both loops run stock (fail-safe). */
     for (i = 0u; i < nblocks; i++) {
         uint32_t fo, bo, modes, tokc, lenc, litc, distc;
         unsigned laneb[8], idxsz = 0u;
@@ -16935,6 +17109,42 @@ static size_t lzmesh_h3_multi(const uint8_t *src, size_t size,
                                     dsym, distc, toks, blks[i].start,
                                     blks[i].end, (uint32_t)blks[i].bs,
                                     blks[i].bs, is_first, level);
+        if (p16_mb != NULL && sok) {
+            /* outs valid (published) => save for loop 2. */
+            p16_mblk *m = &p16_mb[i];
+            size_t tot = (size_t)litc + (size_t)tokc
+                + (size_t)lenc + (size_t)distc;
+            unsigned kk;
+            m->is_comp = is_comp;
+            m->sok = sok;
+            m->fo = fo;
+            m->bo = bo;
+            m->modes = modes;
+            m->tokc = tokc;
+            m->lenc = lenc;
+            m->litc = litc;
+            m->distc = distc;
+            for (kk = 0u; kk < 8u; kk++)
+                m->laneb[kk] = laneb[kk];
+            memcpy(m->idx, idx, idxsz);
+            m->idxsz = idxsz;
+            m->rhsz = rhsz;
+            m->lanes = NULL;
+            m->ok = 0;
+            if (tot == 0u) {
+                m->ok = 1;
+            } else {
+                uint8_t *ln = (uint8_t *)malloc(tot);
+                if (ln != NULL) {
+                    memcpy(ln, lit, litc);
+                    memcpy(ln + litc, tok, tokc);
+                    memcpy(ln + litc + tokc, len, lenc);
+                    memcpy(ln + litc + tokc + lenc, dsym, distc);
+                    m->lanes = ln;
+                    m->ok = 1;
+                }
+            }
+        }
         if (lzmesh_f1_dbg_on())
             fprintf(stderr,
                     "F1DBG multi b%u comp=%d sok=%d rhsz=%u fo=%u ds=%u\n",
@@ -16952,6 +17162,7 @@ static size_t lzmesh_h3_multi(const uint8_t *src, size_t size,
                     if (slot > 3u) {
                         if (rep_bad != NULL)
                             *rep_bad = 1;
+                        p16_mblk_free(p16_mb, nblocks);
                         return 0u;
                     }
                     if (toks[t].dist != dec_rec[slot]) {
@@ -16962,6 +17173,7 @@ static size_t lzmesh_h3_multi(const uint8_t *src, size_t size,
                                     toks[t].dist, slot, dec_rec[slot]);
                         if (rep_bad != NULL)
                             *rep_bad = 1;
+                        p16_mblk_free(p16_mb, nblocks);
                         return 0u;
                     }
                     if (level == 1)
@@ -16974,16 +17186,24 @@ static size_t lzmesh_h3_multi(const uint8_t *src, size_t size,
         } else {
             outpos += blks[i].bs + 5u;
         }
-        if (outpos > size + 65536u)
+        if (outpos > size + 65536u) {
+            p16_mblk_free(p16_mb, nblocks);
             return 0u;
+        }
     }
-    if (!lzmesh_u3_tier2_keep(outpos, size))
+    if (!lzmesh_u3_tier2_keep(outpos, size)) {
+        p16_mblk_free(p16_mb, nblocks);
         return 0u;
+    }
     need = outpos + 1u;
-    if (dst == NULL)
+    if (dst == NULL) {
+        p16_mblk_free(p16_mb, nblocks);
         return need;
-    if (dst_capacity < need)
+    }
+    if (dst_capacity < need) {
+        p16_mblk_free(p16_mb, nblocks);
         return 0u;
+    }
     {
         size_t s = 0u;
         for (i = 0u; i < nblocks; i++) {
@@ -16993,36 +17213,69 @@ static size_t lzmesh_h3_multi(const uint8_t *src, size_t size,
             int is_first = (i == 0u) ? 1 : 0;
             int sok = 0;
             size_t t;
-            int is_comp = lzmesh_h3_probe(src, toks, blks[i].start,
+            size_t p16_hsz = 0u;
+            int p16_memo = 0;
+            int is_comp;
+            if (p16_mb != NULL && p16_mb[i].ok) {
+                /* loop-1 memo hit: restore outs+lanes (deterministic). */
+                p16_mblk *m = &p16_mb[i];
+                unsigned kk;
+                is_comp = m->is_comp;
+                sok = m->sok;
+                fo = m->fo;
+                bo = m->bo;
+                modes = m->modes;
+                tokc = m->tokc;
+                lenc = m->lenc;
+                litc = m->litc;
+                distc = m->distc;
+                for (kk = 0u; kk < 8u; kk++)
+                    laneb[kk] = m->laneb[kk];
+                memcpy(idx, m->idx, m->idxsz);
+                idxsz = m->idxsz;
+                if (m->lanes != NULL) {
+                    memcpy(lit, m->lanes, litc);
+                    memcpy(tok, m->lanes + litc, tokc);
+                    memcpy(len, m->lanes + litc + tokc, lenc);
+                    memcpy(dsym, m->lanes + litc + tokc + lenc,
+                           distc);
+                }
+                p16_hsz = m->rhsz;
+                p16_memo = 1;
+            } else {
+                is_comp = lzmesh_h3_probe(src, toks, blks[i].start,
                                           blks[i].end, blks[i].term_run,
                                           blks[i].off, blks[i].bs,
                                           is_first, lit, tok, len, dsym,
                                           bufcap, &fo, &bo, &modes,
                                           &tokc, &lenc, &litc, &distc,
                                           laneb, idx, &idxsz, &sok);
+            }
             uint32_t ds = (uint32_t)blks[i].bs;
             uint32_t m_lit, m_tok, m_len, m_dist;
             uint32_t payload = 0u;
             if (is_comp
                 && (level == 1 || lzmesh_h5_genhuff_on(level))) {
-                size_t hsz = lzmesh_h3_huf_block(lit, (size_t)litc, tok,
-                                                 (size_t)tokc, len,
-                                                 (size_t)lenc, dsym,
-                                                 (size_t)distc, toks,
-                                                 blks[i].start, blks[i].end,
-                                                 litc, tokc, lenc, distc,
-                                                 ds, is_first, NULL, 0u);
+                /* P16-PACK T1: share one measure (was measure+remeasure). */
+                p16_huf_ctx p16c;
+                size_t hsz = p16_huf_measure(lit, (size_t)litc, tok,
+                                             (size_t)tokc, len,
+                                             (size_t)lenc, dsym,
+                                             (size_t)distc, toks,
+                                             blks[i].start, blks[i].end,
+                                             litc, tokc, lenc, distc,
+                                             ds, is_first, &p16c);
                 if (hsz != 0u && hsz <= (size_t)fo + 10u
                     && need - s >= hsz) {
-                    size_t hw = lzmesh_h3_huf_block(lit, (size_t)litc,
-                                                    tok, (size_t)tokc,
-                                                    len, (size_t)lenc,
-                                                    dsym, (size_t)distc,
-                                                    toks, blks[i].start,
-                                                    blks[i].end, litc,
-                                                    tokc, lenc, distc,
-                                                    ds, is_first, dst + s,
-                                                    need - s);
+                    size_t hw = p16_huf_emit(dst + s, need - s,
+                                             lit, (size_t)litc,
+                                             tok, (size_t)tokc,
+                                             len, (size_t)lenc,
+                                             dsym, (size_t)distc,
+                                             toks, blks[i].start,
+                                             blks[i].end, litc,
+                                             tokc, lenc, distc,
+                                             ds, &p16c);
                     if (hw == hsz) {
                         s += hw;
                         continue;
@@ -17031,14 +17284,18 @@ static size_t lzmesh_h3_multi(const uint8_t *src, size_t size,
             }
             /* F1: HUF-rescue emit (mirrors measure loop). */
             if (!is_comp && sok) {
-                size_t hsz = lzmesh_f1_rescue(lit, litc, tok, tokc,
-                                              len, lenc, dsym, distc,
-                                              toks, blks[i].start,
-                                              blks[i].end, ds, blks[i].bs,
-                                              is_first, level);
+                size_t hsz = p16_hsz;
+                if (!p16_memo)
+                    hsz = lzmesh_f1_rescue(lit, litc, tok, tokc,
+                                           len, lenc, dsym, distc,
+                                           toks, blks[i].start,
+                                           blks[i].end, ds, blks[i].bs,
+                                           is_first, level);
                 if (hsz != 0u) {
-                    if (need - s < hsz)
+                    if (need - s < hsz) {
+                        p16_mblk_free(p16_mb, nblocks);
                         return 0u;
+                    }
                     {
                         size_t hw = lzmesh_h3_huf_block(lit,
                                                         (size_t)litc, tok,
@@ -17050,8 +17307,10 @@ static size_t lzmesh_h3_multi(const uint8_t *src, size_t size,
                                                         tokc, lenc, distc,
                                                         ds, is_first,
                                                         dst + s, need - s);
-                        if (hw != hsz)
+                        if (hw != hsz) {
+                            p16_mblk_free(p16_mb, nblocks);
                             return 0u; /* mismatch: decline safe */
+                        }
                         s += hw;
                         continue;
                     }
@@ -17060,8 +17319,10 @@ static size_t lzmesh_h3_multi(const uint8_t *src, size_t size,
             if (!is_comp) {
                 size_t j;
                 uint32_t rds = ds;
-                if (need - s < blks[i].bs + 5u)
+                if (need - s < blks[i].bs + 5u) {
+                    p16_mblk_free(p16_mb, nblocks);
                     return 0u;
+                }
                 dst[s++] = (uint8_t)LZMESH_U1_TAG_RAW;
                 dst[s++] = (uint8_t)(rds & 0xffu);
                 dst[s++] = (uint8_t)((rds >> 8) & 0xffu);
@@ -17071,8 +17332,10 @@ static size_t lzmesh_h3_multi(const uint8_t *src, size_t size,
                     dst[s++] = src[blks[i].off + j];
                 continue;
             }
-            if (need - s < (size_t)fo + 10u)
+            if (need - s < (size_t)fo + 10u) {
+                p16_mblk_free(p16_mb, nblocks);
                 return 0u;
+            }
             m_lit = modes & 7u;
             m_tok = (modes >> 3) & 7u;
             m_len = (modes >> 6) & 7u;
@@ -17108,8 +17371,10 @@ static size_t lzmesh_h3_multi(const uint8_t *src, size_t size,
                             dst[p++] = dsym[t];
                     }
                 }
-                if (p != s + bo)
+                if (p != s + bo) {
+                    p16_mblk_free(p16_mb, nblocks);
                     return 0u;
+                }
                 for (k = 0u; k < 8u; k++)
                     payload += laneb[k];
                 if (payload > 0u) {
@@ -17138,8 +17403,10 @@ static size_t lzmesh_h3_multi(const uint8_t *src, size_t size,
                         }
                         slot++;
                     }
-                    if (slot != distc)
+                    if (slot != distc) {
+                        p16_mblk_free(p16_mb, nblocks);
                         return 0u;
+                    }
                     for (k = 0u; k < 8u; k++) {
                         uint32_t bc = 0u, ss2 = 0u;
                         size_t tt;
@@ -17155,8 +17422,10 @@ static size_t lzmesh_h3_multi(const uint8_t *src, size_t size,
                                     toks[tt].dist);
                             ss2++;
                         }
-                        if (posb[k] != bc)
+                        if (posb[k] != bc) {
+                            p16_mblk_free(p16_mb, nblocks);
                             return 0u;
+                        }
                         m = bc & 7u;
                         if (m != 0u
                             && lzmesh_u4_pad0_one(distc, k))
@@ -17165,11 +17434,15 @@ static size_t lzmesh_h3_multi(const uint8_t *src, size_t size,
                     }
                     for (t = 0u; t < idxsz; t++)
                         dst[p++] = idx[t];
-                    if (p != s + fo)
+                    if (p != s + fo) {
+                        p16_mblk_free(p16_mb, nblocks);
                         return 0u;
+                    }
                 } else {
-                    if (p != s + fo)
+                    if (p != s + fo) {
+                        p16_mblk_free(p16_mb, nblocks);
                         return 0u;
+                    }
                 }
                 lzmesh_u4_footer_emit(dst + s + fo, modes, tokc, lenc,
                                       litc, distc);
@@ -17177,6 +17450,7 @@ static size_t lzmesh_h3_multi(const uint8_t *src, size_t size,
             }
         }
         dst[s++] = (uint8_t)LZMESH_U1_TAG_END;
+        p16_mblk_free(p16_mb, nblocks);
         return (s != 0u && s <= need) ? s : 0u;
     }
 }
