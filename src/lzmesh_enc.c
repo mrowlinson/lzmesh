@@ -1302,6 +1302,10 @@ size_t lzmesh_u36m_emit(uint8_t *dst, size_t dst_capacity,
 int lzmesh_u37_want(const uint8_t *src, size_t size, int level);
 size_t lzmesh_u37_emit(uint8_t *dst, size_t dst_capacity,
                        const uint8_t *src, size_t size, int level);
+/* P14-S1: fusion calls build directly (defined at end). */
+static size_t lzmesh_u37_build(const uint8_t *src, size_t size,
+                               uint8_t *dst, size_t dst_capacity,
+                               int level);
 /* u38 fwd decls (D2-FD5 e01 single-spike new-dist; defined at end). */
 int lzmesh_u38_want(const uint8_t *src, size_t size, int level);
 size_t lzmesh_u38_emit(uint8_t *dst, size_t dst_capacity,
@@ -1754,9 +1758,71 @@ int lzmesh_u7_comp_keep(uint32_t D, uint32_t fo, size_t outpos, size_t n,
 enum {
     P11_NONE, P11_U36M0, P11_U36_0, P11_U12, P11_U18, P11_U19,
     P11_U38, P11_U21, P11_U23, P11_U27, P11_U29, P11_U30,
-    P11_U32, P11_U33, P11_U37_5, P11_U35M6, P11_U35M, P11_U35,
-    P11_U37_19, P11_U16_0, P11_U10_0, P11_U9RUN
+    P11_U32, P11_U33, P11_U37_TRY5, P11_U35M6, P11_U35M, P11_U35,
+    P11_U37_TRY19, P11_U16_0, P11_U10_0, P11_U9RUN
 };
+
+/* P14-STRUCT S1 (P11-B): u37 want/emit single-build fusion.
+ * Bed (Air, bench corpus): every kept u37 encode ran want-build(NULL)
+ * + emit-build(dst) = 2 builds/4 parses; want = 43-49% of build time
+ * (e01 44/43%, e05 46/45%, e09 49/49% tx/mx). TRY arms run ONE
+ * build(dst) (= original emit-build verbatim) and return its bytes.
+ * Slow path (build failed, bench rate 0): re-evaluate want for the
+ * exact original control flow (fallbacks / L5 chain / RAW).
+ * Soundness: builds deterministic in (src,size,level)+cached env
+ * (P11 purity precedent); emit!=0 ==> want==1 (h3_multi/single/h2
+ * fronts dst-independent); d1 order preserved. */
+static size_t p14_raw_emit(uint8_t *dst, size_t dst_capacity,
+                           const uint8_t *src, size_t size) {
+    /* Single-RAW-block ceiling: ds must fit u32 LE and ds <= MAX. */
+    if (size > (size_t)LZMESH_U1_DS_MAX)
+        return 0;
+    /* Framing needs tag + u32 + payload + END = n+6; encode never
+     * truncates (S4.5). n+6 cannot wrap: n <= MAX checked above. */
+    if (dst_capacity < size + (size_t)LZMESH_U1_RAW_OVERHEAD)
+        return 0;
+    /* u32 LE layout derived from S1.7 enc1 vector (G7). */
+    dst[0] = (uint8_t)LZMESH_U1_TAG_RAW;
+    dst[1] = (uint8_t)(size & 0xffu);
+    dst[2] = (uint8_t)((size >> 8) & 0xffu);
+    dst[3] = (uint8_t)((size >> 16) & 0xffu);
+    dst[4] = (uint8_t)((size >> 24) & 0xffu);
+    memmove(dst + 5, src, size); /* memmove: alias-safe (G12). */
+    dst[5 + size] = (uint8_t)LZMESH_U1_TAG_END;
+    return size + (size_t)LZMESH_U1_RAW_OVERHEAD;
+}
+
+static size_t p14_u37_try(uint8_t *dst, size_t dst_capacity,
+                          const uint8_t *src, size_t size, int level) {
+    size_t w = lzmesh_u37_build(src, size, dst, dst_capacity, level);
+    if (w != 0u) {
+        /* want==1 implied (emit!=0 ==> front passed); d1 as in arm. */
+        if (level != 5 && lzmesh_d1_gen_bail(src, size, level))
+            return p14_raw_emit(dst, dst_capacity, src, size);
+        return w;
+    }
+    /* Slow: emit-build failed. Recover want verdict (rare). */
+    if (!lzmesh_u37_want(src, size, level)) {
+        if (level == 5) {
+            /* Arm tail exactly as p11_arm post-u37 order. */
+            if (lzmesh_u35m6_want(src, size, level))
+                return lzmesh_u35m6_emit(dst, dst_capacity, src, size,
+                                         level);
+            if (lzmesh_u35m_want(src, size, level))
+                return lzmesh_u35m_emit(dst, dst_capacity, src, size,
+                                        level);
+            if (lzmesh_u35_want(src, size, level))
+                return lzmesh_u35_emit(dst, dst_capacity, src, size,
+                                       level);
+        }
+        return p14_raw_emit(dst, dst_capacity, src, size);
+    }
+    if (level != 5 && lzmesh_d1_gen_bail(src, size, level))
+        return p14_raw_emit(dst, dst_capacity, src, size);
+    /* want==1: original emit (build re-fails deterministically, then
+     * u36/u36m fallbacks exactly as before). */
+    return lzmesh_u37_emit(dst, dst_capacity, src, size, level);
+}
 static int lzmesh_p11_arm(const uint8_t *src, size_t size, int level) {
     uint32_t lenB, modes, bo, fo;
     if (!lzmesh_u3_level_parse_ok(level))
@@ -1805,18 +1871,16 @@ static int lzmesh_p11_arm(const uint8_t *src, size_t size, int level) {
             return P11_U32;
         if (lzmesh_u33_want(src, size, level))
             return P11_U33;
-        if (level == 5 && lzmesh_u37_want(src, size, level))
-            return P11_U37_5;
+        if (level == 5)
+            return P11_U37_TRY5; /* P14-S1: fused single build. */
         if (lzmesh_u35m6_want(src, size, level))
             return P11_U35M6;
         if (lzmesh_u35m_want(src, size, level))
             return P11_U35M;
         if (lzmesh_u35_want(src, size, level))
             return P11_U35;
-        if ((level == 1 || level == 9)
-            && lzmesh_u37_want(src, size, level)
-            && !lzmesh_d1_gen_bail(src, size, level))
-            return P11_U37_19;
+        if (level == 1 || level == 9)
+            return P11_U37_TRY19; /* P14-S1: fused (d1 in emit). */
         return P11_NONE;
     }
     if (level == 0) {
@@ -1934,10 +1998,10 @@ size_t lzmesh_encode(uint8_t *dst, size_t dst_capacity,
             case P11_U33:
                 w = lzmesh_u33_emit(dst, dst_capacity, src, src_size);
                 break;
-            case P11_U37_5:
-            case P11_U37_19:
-                w = lzmesh_u37_emit(dst, dst_capacity, src, src_size,
-                                    level);
+            case P11_U37_TRY5:
+            case P11_U37_TRY19:
+                w = p14_u37_try(dst, dst_capacity, src, src_size,
+                                level);
                 break;
             case P11_U35M6:
                 w = lzmesh_u35m6_emit(dst, dst_capacity, src, src_size,
@@ -1971,24 +2035,8 @@ size_t lzmesh_encode(uint8_t *dst, size_t dst_capacity,
         }
     }
 
-    /* Single-RAW-block ceiling: ds must fit u32 LE and ds <= MAX (S6.5 C3). */
-    if (src_size > (size_t)LZMESH_U1_DS_MAX)
-        return 0;
-
-    /* Framing needs tag + u32 + payload + END = n+6; encode never
-     * truncates (S4.5). n+6 cannot wrap: n <= MAX checked above. */
-    if (dst_capacity < src_size + (size_t)LZMESH_U1_RAW_OVERHEAD)
-        return 0;
-
-    /* u32 LE layout derived from S1.7 enc1 vector (G7). */
-    dst[0] = (uint8_t)LZMESH_U1_TAG_RAW;
-    dst[1] = (uint8_t)(src_size & 0xffu);
-    dst[2] = (uint8_t)((src_size >> 8) & 0xffu);
-    dst[3] = (uint8_t)((src_size >> 16) & 0xffu);
-    dst[4] = (uint8_t)((src_size >> 24) & 0xffu);
-    memmove(dst + 5, src, src_size); /* memmove: alias-safe (G12). */
-    dst[5 + src_size] = (uint8_t)LZMESH_U1_TAG_END;
-    return src_size + (size_t)LZMESH_U1_RAW_OVERHEAD;
+    /* P14-S1: RAW tail shared with TRY slow paths (exact motion). */
+    return p14_raw_emit(dst, dst_capacity, src, src_size);
 }
 
 size_t lzmesh_encode_scratch_size(int level) {
