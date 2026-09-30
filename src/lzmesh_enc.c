@@ -11468,11 +11468,18 @@ static void lzmesh_h1_catchup(int32_t *head, int32_t *prev,
     size_t v = ins, i, nextv;
     unsigned w = (level == 1) ? LZMESH_H1_WIN_L1 : LZMESH_H1_WIN_GEN;
     size_t k;
-    for (k = ins; k < m; k++)
-        vis[k] = 0u;
-    while (v < m) {
-        vis[v] = 1u;
-        v += (size_t)1u + ((v - ins) >> 8);
+    /* P17-FINDER win256: gap<=256 visits every pos (step is 1 while
+     * (v-ins)<256), so the walk takes no else-leg and vis[] is pure
+     * scratch: skip clear+mark+walk. Fails open (m<ins underflows to
+     * a huge gap, running stock). */
+    int win256 = (m - ins > 256u) ? 1 : 0;
+    if (win256) {
+        for (k = ins; k < m; k++)
+            vis[k] = 0u;
+        while (v < m) {
+            vis[v] = 1u;
+            v += (size_t)1u + ((v - ins) >> 8);
+        }
     }
     for (i = span_lo; i < end; i++) {
         if (level == 1) { /* S2 MX link + S4 once-guard */
@@ -11490,6 +11497,8 @@ static void lzmesh_h1_catchup(int32_t *head, int32_t *prev,
     /* WSTORE NOWIN: L1 stores visited-direct + span only (no
      * gap-backward windows). */
     if (level == 1 && lzmesh_wstore_nowin())
+        return;
+    if (!win256) /* P17-FINDER win256: no else-leg fires (see above) */
         return;
     for (i = m; i > ins;) {
         --i;
@@ -11586,6 +11595,10 @@ static void lzmesh_i4_windows(int32_t *head, int32_t *prev,
     size_t k;
     (void)head;
     (void)prev;
+    /* P17-FINDER win256 (same proof as h1_catchup): gap<=256 takes no
+     * else-leg; vis[] is pure scratch. */
+    if (m - ins <= 256u)
+        return;
     for (k = ins; k < m; k++)
         vis[k] = 0u;
     while (v < m) {
@@ -12375,11 +12388,16 @@ static void lzmesh_i5_catchup(int32_t *head, int32_t *prev,
     size_t v = ins, i, nextv;
     unsigned w = (level == 1) ? LZMESH_H1_WIN_L1 : LZMESH_H1_WIN_GEN;
     size_t k;
-    for (k = ins; k < m; k++)
-        vis[k] = 0u;
-    while (v < m) {
-        vis[v] = 1u;
-        v += (size_t)1u + ((v - ins) >> 8);
+    /* P17-FINDER win256 (same proof as h1_catchup): gap<=256 takes no
+     * else-leg; vis[] is pure scratch. */
+    int win256 = (m - ins > 256u) ? 1 : 0;
+    if (win256) {
+        for (k = ins; k < m; k++)
+            vis[k] = 0u;
+        while (v < m) {
+            vis[v] = 1u;
+            v += (size_t)1u + ((v - ins) >> 8);
+        }
     }
     for (i = span_lo; i < end; i++) {
         if (level == 1) {
@@ -12390,6 +12408,8 @@ static void lzmesh_i5_catchup(int32_t *head, int32_t *prev,
         }
     }
     nextv = m;
+    if (!win256) /* P17-FINDER win256: no else-leg fires (see above) */
+        return;
     for (i = m; i > ins;) {
         --i;
         if (vis[i])
@@ -15732,12 +15752,14 @@ static int lzmesh_h3_lit_block(size_t size, int k, unsigned i, size_t *off,
  * Returns nblocks>=1 with *out malloced (caller frees), 0 on fail. */
 static size_t lzmesh_h3_split(lzmesh_u37_tok *toks, size_t n_real,
                               uint32_t gterm, size_t size, int level,
-                              lzmesh_h3_blk **out, int f1mid) {
+                              lzmesh_h3_blk **out, int f1mid, unsigned *yftwin) {
     lzmesh_h3_blk *b = NULL;
     size_t cap = 16u, nb = 0u, i;
     size_t off = 0u, start = 0u, pos = 1u;
     uint32_t S;
     unsigned blk = 0u;
+    unsigned yf = 0u; /* S-SPLITSKIP count */
+    unsigned spcuts = 0u; /* S-SPLITSKIP: arms cuts */
     uint32_t tokb = 0u, lenb = 0u;
     uint32_t *cost = NULL, *esc = NULL;
     int l1mid = 0; /* Y-E01QUAD: L1 mid-sea twin gate. */
@@ -15794,6 +15816,7 @@ static size_t lzmesh_h3_split(lzmesh_u37_tok *toks, size_t n_real,
          * TEST2 tail-absorb). == stays baseline arms (memo-24 NEW
          * take-end + V2 REP-join); L>=4 stays baseline (memo
          * long-exempt L>=9 join; L4-8 unbedded). */
+        int litcut = 0;
         if ((f1mid && (level == 5 || level == 9)
                 && toks[i].mlen <= 3u)
             || (l1mid && level == 1)) {
@@ -15839,6 +15862,8 @@ static size_t lzmesh_h3_split(lzmesh_u37_tok *toks, size_t n_real,
                 b[nb].term_run = (uint32_t)(cutpos - pos);
                 nb++;
                 toks[i].litrun -= (uint32_t)(cutpos - pos);
+                litcut = 1;
+                spcuts++;
                 off = cutpos;
                 pos = cutpos;
                 S = 0u;
@@ -15850,8 +15875,16 @@ static size_t lzmesh_h3_split(lzmesh_u37_tok *toks, size_t n_real,
             }
         }
         nwi = toks[i].is_new ? 1 : 0;
-        esci = lzmesh_h3_tok_esc(toks[i].litrun, toks[i].mlen, nwi);
-        costi = 1u + esci + toks[i].litrun + (nwi ? 5u : 0u);
+        /* P17-PACK S-ESC: esc[i]/cost[i] reuse for uncut toks
+         * (tok_esc pure, args identical iff litrun unmutated;
+         * sole mutation is the arms cut above; bed cuts=0). */
+        if (!litcut) {
+            esci = esc[i];
+            costi = cost[i];
+        } else {
+            esci = lzmesh_h3_tok_esc(toks[i].litrun, toks[i].mlen, nwi);
+            costi = 1u + esci + toks[i].litrun + (nwi ? 5u : 0u);
+        }
         pos_new = pos + (size_t)toks[i].litrun
             + (size_t)toks[i].mlen;
         if (pos_new <= pos || pos_new > size)
@@ -16186,6 +16219,19 @@ static size_t lzmesh_h3_split(lzmesh_u37_tok *toks, size_t n_real,
                 && (size_t)B - (size_t)Cb_new
                     >= (size_t)LZMESH_H3_SPLITMIN)
                 seacut = 1;
+            /* P17-PACK S-SPLITSKIP count: YF-twin condition sans f1mid
+             * (would-fire under f1=2). Caller skips the f1=2 re-split
+             * iff 0 (sole f1=1-vs-2 difference on L9; induction needs
+             * identical inputs, i.e. cuts==0 since cuts mutate toks;
+             * twin-quiet + cut-free => states identical every iter). */
+            if (f1mid == 1 && i + 1u < n_real && level == 9
+                && toks[i + 1u].mlen <= 3u && Cb_new < B
+                && lzmesh_yf_l9cut_on()
+                && (size_t)B - (size_t)Cb_new
+                    < (size_t)toks[i + 1u].litrun
+                && (size_t)B - (size_t)Cb_new
+                    >= (size_t)LZMESH_H3_SPLITMIN)
+                yf++;
             if (Cb_new >= B) {
                 cut = 1;
             } else if (!seacut && S_new + cn > M) {
@@ -16283,6 +16329,8 @@ static size_t lzmesh_h3_split(lzmesh_u37_tok *toks, size_t n_real,
     }
     goto fail;
 done:
+    if (yftwin != NULL)
+        *yftwin = yf | spcuts;
     free(cost);
     free(esc);
     if (nb == 0u) {
@@ -16630,6 +16678,7 @@ typedef struct {
     uint32_t fo;
     uint32_t payload;
     uint32_t modes;
+    uint8_t *sbb; /* P17-PACK S-SBSTASH: per-take sb stash (malloc/free) */
 } p16_huf_ctx;
 
 static size_t p16_huf_measure(const uint8_t *lit, size_t li,
@@ -16650,6 +16699,8 @@ static size_t p16_huf_measure(const uint8_t *lit, size_t li,
     unsigned idxsz;
     uint32_t bo, fo, payload = 0u, modes;
     size_t t;
+    if (ctx != NULL)
+        ctx->sbb = NULL;
     if (lit == NULL || tok == NULL || len == NULL || dsym == NULL
         || toks == NULL)
         return 0u;
@@ -16727,11 +16778,16 @@ static size_t p16_huf_measure(const uint8_t *lit, size_t li,
     }
     {
         uint32_t slot = 0u;
+        /* P17-PACK S-SBSTASH: stash sb per NEW take for emit. */
+        if (ctx != NULL)
+            ctx->sbb = (distc == 0u) ? NULL : (uint8_t *)malloc(distc);
         for (t = start; t < end; t++) {
             unsigned sb;
             if (!toks[t].is_new)
                 continue;
             sb = lzmesh_u3_sb_of(toks[t].dist);
+            if (ctx != NULL && ctx->sbb != NULL && slot < distc)
+                ctx->sbb[slot] = (uint8_t)sb;
             bitc[slot % 8u] += sb;
             sufbits[slot % 8u] += sb;
             slot++;
@@ -16896,7 +16952,21 @@ static size_t p16_huf_emit(uint8_t *dst, size_t dst_capacity,
             uint32_t suf, kk;
             if (!toks[t].is_new)
                 continue;
-            lzmesh_u4_dist_split_nc(toks[t].dist, &sb, &low, &suf);
+            /* P17-PACK S-SBSTASH: sb stashed by measure; derive
+             * (low,suf) without sb_of (split_nc body sans clz).
+             * Guards fall back to split_nc (fail-safe). */
+            if (ctx != NULL && ctx->sbb != NULL && slot < distc) {
+                uint32_t d = toks[t].dist;
+                uint32_t base;
+                uint32_t tt;
+                sb = ctx->sbb[slot];
+                base = (sb >= 29u) ? 0u : (8u << sb);
+                tt = d + 7u - base;
+                low = (unsigned)(tt & 7u);
+                suf = tt >> 3;
+            } else {
+                lzmesh_u4_dist_split_nc(toks[t].dist, &sb, &low, &suf);
+            }
             kk = slot % 8u;
             /* P2-bitio: identical bit-OR via u35_put (was inline loop). */
             lzmesh_u35_put(dst + bo + startb[kk], &pos[kk], suf, sb);
@@ -16985,13 +17055,19 @@ static size_t lzmesh_h3_huf_block(const uint8_t *lit, size_t li,
     size_t hsz = p16_huf_measure(lit, li, tok, ti, len, eni, dsym, di,
                                  toks, start, end, litc, tokc, lenc,
                                  distc, ds, is_first, &ctx);
-    if (hsz == 0u)
+    if (hsz == 0u) {
+        free(ctx.sbb);
         return 0u;
-    if (dst == NULL)
+    }
+    if (dst == NULL) {
+        free(ctx.sbb);
         return hsz;
-    return p16_huf_emit(dst, dst_capacity, lit, li, tok, ti, len, eni,
-                        dsym, di, toks, start, end, litc, tokc, lenc,
-                        distc, ds, &ctx);
+    }
+    { size_t hw = p16_huf_emit(dst, dst_capacity, lit, li, tok, ti,
+                               len, eni, dsym, di, toks, start, end,
+                               litc, tokc, lenc, distc, ds, &ctx);
+      free(ctx.sbb);
+      return hw; }
 }
 
 /* GEN multi validate + emit (Q2 per-block HUF + RAW fallback,
@@ -17278,9 +17354,11 @@ static size_t lzmesh_h3_multi(const uint8_t *src, size_t size,
                                              ds, &p16c);
                     if (hw == hsz) {
                         s += hw;
+                        free(p16c.sbb);
                         continue;
                     }
                 }
+                free(p16c.sbb); /* S-SBSTASH: gate-fail/hw-mismatch */
             }
             /* F1: HUF-rescue emit (mirrors measure loop). */
             if (!is_comp && sok) {
@@ -17621,7 +17699,9 @@ static size_t lzmesh_u37_build(const uint8_t *src, size_t size,
                         (unsigned)d, toks[d].litrun, toks[d].mlen,
                         toks[d].dist, toks[d].is_new, toks[d].slot);
         }
-        h3n = lzmesh_h3_split(toks, h3nr, h3tr, size, level, &h3b, f1);
+        unsigned yftwin0 = 1u; /* S-SPLITSKIP: 1 = unknown/no-skip */
+        h3n = lzmesh_h3_split(toks, h3nr, h3tr, size, level, &h3b, f1,
+                             &yftwin0);
         if (lzmesh_f1_dbg_on()) {
             size_t d;
             fprintf(stderr, "F1DBG h3n=%u\n", (unsigned)h3n);
@@ -17700,9 +17780,17 @@ static size_t lzmesh_u37_build(const uint8_t *src, size_t size,
                          * re-splits pass 2; adopt iff offs agree
                          * (exact it0-conv motion), else full loop. */
                         lzmesh_h3_blk *p0b2 = NULL;
-                        size_t p0n2 = lzmesh_h3_split(toks, h3nr, h3tr,
-                                                     size, level, &p0b2,
-                                                     2);
+                        size_t p0n2;
+                        if (f1 == 1 && yftwin0 == 0u) {
+                            /* S-SPLITSKIP: call0 twin-quiet+cut-free
+                             * => f1=2 re-split provably identical. */
+                            p0skip = 1;
+                            p0n2 = h3n;
+                        } else {
+                            p0n2 = lzmesh_h3_split(toks, h3nr, h3tr,
+                                                 size, level, &p0b2,
+                                                 2, NULL);
+                        }
                         if (p0n2 == h3n && p0b2 != NULL) {
                             size_t pj;
                             int pok = 1;
@@ -17782,7 +17870,7 @@ static size_t lzmesh_u37_build(const uint8_t *src, size_t size,
                     h3n2 = lzmesh_h3_split(toks, h3nr, h3tr, size,
                                            level, &h3b2,
                                            (level == 9
-                                            && lzmesh_yf_l9cut_on()) ? 2 : 1);
+                                            && lzmesh_yf_l9cut_on()) ? 2 : 1, NULL);
                     if (h3n2 == 0u || h3b2 == NULL) {
                         if (h3b2 != NULL)
                             free(h3b2);
@@ -17821,7 +17909,7 @@ static size_t lzmesh_u37_build(const uint8_t *src, size_t size,
                 free(h3b);
                 h3b = NULL;
                 h3n = lzmesh_h3_split(toks, h3nr, h3tr, size, level,
-                                      &h3b, 1);
+                                      &h3b, 1, NULL);
                 if (h3n == 0u || h3b == NULL) {
                     if (h3b != NULL)
                         free(h3b);
