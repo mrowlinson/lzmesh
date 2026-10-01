@@ -10817,7 +10817,10 @@ static int lzmesh_u37_loss_ok(uint32_t len, uint32_t dist, int is_rep) {
     return dist < lzmesh_p3_filt_maxd[idx];
 }
 
-static uint32_t lzmesh_u37_extend_scalar(const uint8_t *src, size_t size,
+/* P29-MF A1: per-query path is call-free (MSH-shape: hot legs inline,
+ * extend inlined at probe sites; zero behavior change). */
+static inline __attribute__((always_inline)) uint32_t
+lzmesh_u37_extend_scalar(const uint8_t *src, size_t size,
                                          size_t pos, size_t q,
                                          uint32_t need) {
     uint32_t len = need;
@@ -10836,7 +10839,8 @@ static uint32_t lzmesh_u37_extend_scalar(const uint8_t *src, size_t size,
  * [q+len,q+len+16) ends strictly below size. size < 16 (max < 16) never
  * enters the loop: pure scalar tail. need >= max returns need unread,
  * exactly like scalar. */
-static uint32_t lzmesh_u37_extend_neon(const uint8_t *src, size_t size,
+static inline __attribute__((always_inline)) uint32_t
+lzmesh_u37_extend_neon(const uint8_t *src, size_t size,
                                        size_t pos, size_t q, uint32_t need) {
     uint32_t len = need;
     uint32_t max = (uint32_t)(size - pos);
@@ -10879,8 +10883,9 @@ static int lzmesh_p3_scalar_on(void) {
 #endif
 }
 
-static uint32_t lzmesh_u37_extend(const uint8_t *src, size_t size,
-                                  size_t pos, size_t q, uint32_t need) {
+static inline __attribute__((always_inline)) uint32_t
+lzmesh_u37_extend(const uint8_t *src, size_t size,
+                  size_t pos, size_t q, uint32_t need) {
 #if defined(__ARM_NEON)
     if (!lzmesh_p3_scalar_on())
         return lzmesh_u37_extend_neon(src, size, pos, q, need);
@@ -10922,6 +10927,20 @@ static int lzmesh_u37_elig(size_t pos, size_t size, int relax) {
     return 1;
 }
 
+/* P29-MF A1: no-compare head gate (MSH-shape probe: tag-gate then extend).
+ * head_eq(a,b,n) over LE bytes <=> (((u64(a)^u64(b)) & mask(n))==0).
+ * Needs 8 readable bytes both sides (caller-established); else the stock
+ * byte-width fallback (identical loads to head_eq, no new OOB). */
+static int lzmesh_mf_head_eq(const uint8_t *a, uint64_t wa, int wa_ok,
+                             const uint8_t *b, int wb_ok, unsigned n) {
+    static const uint64_t mf_masks[9] = { 0ull, 0xFFull, 0xFFFFull,
+        0xFFFFFFull, 0xFFFFFFFFull, 0xFFFFFFFFFFull, 0xFFFFFFFFFFFFull,
+        0xFFFFFFFFFFFFFFull, 0xFFFFFFFFFFFFFFFFull };
+    if (n <= 8u && wa_ok && wb_ok)
+        return (((wa ^ lzmesh_wl_ld64(b)) & mf_masks[n]) == 0u);
+    return lzmesh_u2_head_eq(a, b, n);
+}
+
 /* Lowest-slot rep hit among the first nrep recents (heads 2/4/4,
  * floor 2). Returns 1 with blen/bdist set.
  * N2 (LANE-N2): L5 rep path is loss-exempt (loss caps are NEW-path
@@ -10931,13 +10950,24 @@ static int lzmesh_u37_elig(size_t pos, size_t size, int relax) {
  * declines-then-takes-shorter. 11 real cells (7 R1/R2 + 3 R0/R1 +
  * 1 R0/NEW) + s14 challenger-leg duel (8<18 strict) ride this.
  * L1/L9 keep loss_ok (unbedded there; N2 owns e05 slots). */
-static int lzmesh_u37_rep_best(const uint8_t *src, size_t size, size_t pos,
+static inline __attribute__((always_inline)) int
+lzmesh_u37_rep_best(const uint8_t *src, size_t size, size_t pos,
                                const uint32_t recent[4], unsigned nrep,
                                uint32_t *blen, uint32_t *bdist, int level,
                                int relax) {
     unsigned j;
-    if (!lzmesh_u37_elig(pos, size, relax))
+    uint64_t mf_w8 = 0u;
+    int mf_fused;
+    (void)level; /* P29-MF A1: rep loss_ok(ln,r,1) is identically 1
+                  * (u37_loss_ok is_rep short-circuit); call dropped. */
+    /* P29-MF A1: elig inlined (same two predicates as u37_elig). */
+    if (pos + LZMESH_U37_MINREP > size)
         return 0;
+    if (!relax && pos + 9u > size)
+        return 0;
+    mf_fused = (pos + 8u <= size);
+    if (mf_fused)
+        mf_w8 = lzmesh_wl_ld64(src + pos);
     for (j = 0u; j < nrep; j++) {
         uint32_t r = recent[j];
         uint32_t need = (j == 0u) ? 2u : 4u;
@@ -10948,16 +10978,11 @@ static int lzmesh_u37_rep_best(const uint8_t *src, size_t size, size_t pos,
         if (pos + need > size)
             continue;
         qq = pos - (size_t)r;
-        if (src[pos] != src[qq] || src[pos + 1u] != src[qq + 1u])
-            continue;
-        if (need > 2u
-            && (src[pos + 2u] != src[qq + 2u]
-                || src[pos + 3u] != src[qq + 3u]))
+        if (!lzmesh_mf_head_eq(src + pos, mf_w8, mf_fused, src + qq,
+                               qq + 8u <= size, need))
             continue;
         ln = lzmesh_u37_extend(src, size, pos, qq, need);
         if (ln < LZMESH_U37_MINREP)
-            continue;
-        if (level != 5 && !lzmesh_u37_loss_ok(ln, r, 1))
             continue;
         *blen = ln;
         *bdist = r;
@@ -11053,7 +11078,8 @@ static int lzmesh_w9_taketrace_on(void) {
     return on;
 }
 
-static int lzmesh_s2_mx_best(const uint8_t *src, size_t size, size_t pos,
+static inline __attribute__((always_inline)) int
+lzmesh_s2_mx_best(const uint8_t *src, size_t size, size_t pos,
                              const int32_t *head, const int32_t *prev,
                              unsigned hb,
                              uint32_t *blen, uint32_t *bdist, int level,
@@ -11185,18 +11211,23 @@ static int lzmesh_w9_qpick_on(void);
 static long lzmesh_w9_qtrace(void);
 /* YF fwd decl (defined below; h3 visited-gate). Precedes slot_best. */
 static int lzmesh_yf_svisg_on(void);
-static int lzmesh_u37_slot_best(const uint8_t *src, size_t size, size_t pos,
+static inline __attribute__((always_inline)) int
+lzmesh_u37_slot_best(const uint8_t *src, size_t size, size_t pos,
                                 const uint32_t *big, const uint32_t *small,
                                 unsigned hb,
                                 uint32_t *blen, uint32_t *bdist,
                                 int relax, const uint32_t *sprev, int level,
                                 const unsigned char *i5v,
                                 const unsigned char *ycon,
-                                const unsigned char *ywin) {
+                                const unsigned char *ywin,
+                                int *win_tier) {
     uint32_t q;
     uint64_t p11_w8 = 0u;
     int p11_fused;
-    if (!lzmesh_u37_elig(pos, size, relax))
+    /* P29-MF A1: elig inlined (same two predicates as u37_elig). */
+    if (pos + LZMESH_U37_MINREP > size)
+        return 0;
+    if (!relax && pos + 9u > size)
         return 0;
     /* P11-WINS: one u64 feeds the 7/5/3 cascade (LE low bytes equal
      * load_n bit-for-bit); tail legs keep guarded stock loads. */
@@ -11208,14 +11239,18 @@ static int lzmesh_u37_slot_best(const uint8_t *src, size_t size, size_t pos,
                                        : lzmesh_u2_load_n(src + pos, 7u),
                              hb)];
         if (q != LZMESH_U2_EMPTY && (size_t)q < pos
-            && lzmesh_u2_head_eq(src + pos, src + q, 7u)) {
+            && lzmesh_mf_head_eq(src + pos, p11_w8, p11_fused, src + q,
+                                 (size_t)q + 8u <= size, 7u)) {
             uint32_t dist = (uint32_t)pos - q;
             uint32_t ln = lzmesh_u37_extend(src, size, pos, (size_t)q,
                                             7u);
-            if (ln < 7u || !lzmesh_u37_loss_ok(ln, dist, 0))
+            if (ln < 7u
+                || dist >= lzmesh_p3_filt_maxd[ln < 6u ? ln : 6u])
                 return 0; /* strict: winner fail = miss */
             *blen = ln;
             *bdist = dist;
+            if (win_tier != NULL) /* P29-MF A2: D2 tier out-param */
+                *win_tier = 7;
             return 1;
         }
     }
@@ -11224,14 +11259,18 @@ static int lzmesh_u37_slot_best(const uint8_t *src, size_t size, size_t pos,
                                        : lzmesh_u2_load_n(src + pos, 5u),
                              hb)];
         if (q != LZMESH_U2_EMPTY && (size_t)q < pos
-            && lzmesh_u2_head_eq(src + pos, src + q, 5u)) {
+            && lzmesh_mf_head_eq(src + pos, p11_w8, p11_fused, src + q,
+                                 (size_t)q + 8u <= size, 5u)) {
             uint32_t dist = (uint32_t)pos - q;
             uint32_t ln = lzmesh_u37_extend(src, size, pos, (size_t)q,
                                             5u);
-            if (ln < 5u || !lzmesh_u37_loss_ok(ln, dist, 0))
+            if (ln < 5u
+                || dist >= lzmesh_p3_filt_maxd[ln < 6u ? ln : 6u])
                 return 0; /* strict: winner fail = miss */
             *blen = ln;
             *bdist = dist;
+            if (win_tier != NULL) /* P29-MF A2 */
+                *win_tier = 5;
             return 1;
         }
     }
@@ -11241,11 +11280,13 @@ static int lzmesh_u37_slot_best(const uint8_t *src, size_t size, size_t pos,
                                  : lzmesh_u2_load_n(src + pos, 3u)));
         q = small[s];
         if (q != LZMESH_U2_EMPTY && (size_t)q < pos
-            && lzmesh_u2_head_eq(src + pos, src + q, 3u)) {
+            && lzmesh_mf_head_eq(src + pos, p11_w8, p11_fused, src + q,
+                                 (size_t)q + 8u <= size, 3u)) {
             uint32_t dist = (uint32_t)pos - q;
             uint32_t ln = lzmesh_u37_extend(src, size, pos, (size_t)q,
                                             3u);
-            if (ln < 3u || !lzmesh_u37_loss_ok(ln, dist, 0))
+            if (ln < 3u
+                || dist >= lzmesh_p3_filt_maxd[ln < 6u ? ln : 6u])
                 return 0;
             /* YF: h3 source-gate (gated; miss = fall through). Allow
              * landed (i5v), winpos (queried+won), take-consumed [m,end],
@@ -11261,6 +11302,8 @@ static int lzmesh_u37_slot_best(const uint8_t *src, size_t size, size_t pos,
             } else {
                 *blen = ln;
                 *bdist = dist;
+                if (win_tier != NULL) /* P29-MF A2 */
+                    *win_tier = 3;
                 return 1;
             }
         }
@@ -11282,6 +11325,8 @@ static int lzmesh_u37_slot_best(const uint8_t *src, size_t size, size_t pos,
                         return 0;
                     *blen = ln;
                     *bdist = dist;
+                    if (win_tier != NULL) /* P29-MF A2 (walk wins 3B) */
+                        *win_tier = 3;
                     if (lzmesh_w9_taketrace_on())
                         fprintf(stderr, "W9TAKE pos=%u young=%u win=%u depth=%u len=%u\n",
                                 (unsigned)pos, q, c, (unsigned)steps,
@@ -11349,7 +11394,7 @@ static int lzmesh_u37_best(const uint8_t *src, size_t size, size_t pos,
     } else {
         if (lzmesh_u37_slot_best(src, size, pos, big, small, hb, blen,
                                  bdist, relax, sprev, level, i5v,
-                                 ycon, ywin)) {
+                                 ycon, ywin, NULL)) {
             *is_rep = 0;
             return 1;
         }
@@ -11437,7 +11482,10 @@ static void lzmesh_u37_recents_rep(uint32_t r[4], unsigned k) {
  * prev[p]=p (self-loop) or a cycle, hanging the uncapped J1 walk
  * to ~0u iters (s12-n65536 e01 0.03s -> 415s); J4-shifted take-m
  * re-hits stored visits, so skip re-stores (first wins, H1 C). */
-static void lzmesh_h1_store_visit(int32_t *head, int32_t *prev,
+/* P29-MF A3: store path inline (per-visit/per-drain calls fused into the
+ * parse; zero behavior change). */
+static inline __attribute__((always_inline)) void
+lzmesh_h1_store_visit(int32_t *head, int32_t *prev,
                                   uint32_t *big, uint32_t *small,
                                   const uint8_t *src, size_t size, size_t pos,
                                   unsigned hb, int level,
@@ -11453,6 +11501,10 @@ static void lzmesh_h1_store_visit(int32_t *head, int32_t *prev,
         lzmesh_u37_g6_store(big, small, src, size, pos, hb);
     }
 }
+
+/* P29-MF B probe REMOVED (killed: run-skip DIVs at every live threshold;
+ * bench-12 N=8:6 N=32:3 N=128:3 N=1024:2(mixed e01+e05); full-2seed N=8:
+ * 52/1504; N=65536 silent-vacuous. See LANE-P29-MF). */
 
 /* Match catch-up [ins, end), take [m, end): span forward (all tables)
  * from span_lo (m+1 when m direct-stored, m on challenger-win peek),
@@ -11536,43 +11588,9 @@ static void lzmesh_h1_catchup(int32_t *head, int32_t *prev,
  * H1 far evidence unaffected).
  * Both gates are level 5 only; L0/L1/L9 byte-identical. H1/G6/u37
  * helpers untouched (hooks below call owned helpers). */
-/* Winning cascade tier at pos (read-only mirror of slot_best). */
-static int lzmesh_i4_tier(const uint8_t *src, size_t size, size_t pos,
-                          const uint32_t *big, const uint32_t *small,
-                          unsigned hb) {
-    uint32_t q;
-    uint64_t p11_w8 = 0u;
-    int p11_fused;
-    /* P11-WINS: fused u64 (see slot_best). */
-    p11_fused = (pos + 8u <= size);
-    if (p11_fused)
-        p11_w8 = lzmesh_wl_ld64(src + pos);
-    if (pos + 7u <= size) {
-        q = big[lzmesh_u2_h1(p11_fused ? (p11_w8 & 0xFFFFFFFFFFFFFFull)
-                                       : lzmesh_u2_load_n(src + pos, 7u),
-                             hb)];
-        if (q != LZMESH_U2_EMPTY && (size_t)q < pos
-            && lzmesh_u2_head_eq(src + pos, src + q, 7u))
-            return 7;
-    }
-    if (pos + 5u <= size) {
-        q = big[lzmesh_u2_h2(p11_fused ? (p11_w8 & 0xFFFFFFFFFFull)
-                                       : lzmesh_u2_load_n(src + pos, 5u),
-                             hb)];
-        if (q != LZMESH_U2_EMPTY && (size_t)q < pos
-            && lzmesh_u2_head_eq(src + pos, src + q, 5u))
-            return 5;
-    }
-    if (pos + 3u <= size && small != NULL) {
-        q = small[lzmesh_u2_h3(
-            (uint32_t)(p11_fused ? (p11_w8 & 0xFFFFFFu)
-                                 : lzmesh_u2_load_n(src + pos, 3u)))];
-        if (q != LZMESH_U2_EMPTY && (size_t)q < pos
-            && lzmesh_u2_head_eq(src + pos, src + q, 3u))
-            return 3;
-    }
-    return 0;
-}
+/* P29-MF A2: lzmesh_i4_tier deleted (sole caller was the L5 peek FIX-A
+ * site, now reusing slot_best's winning tier via out-param; win at T
+ * implies i4 == T, P4 bedded 192048/192048 exact on text-L5). */
 
 /* Pending take catch-up: rep-m direct store + span range + gap
  * window range. Flush replays h1_catchup's store ORDER (m, span,
@@ -11683,7 +11701,8 @@ static int lzmesh_k2_append(lzmesh_k2_q *q, const lzmesh_i4_pend *e) {
     q->n++;
     return 1;
 }
-static void lzmesh_k2_drain(int32_t *head, int32_t *prev, uint32_t *big,
+static inline __attribute__((always_inline)) void
+lzmesh_k2_drain(int32_t *head, int32_t *prev, uint32_t *big,
                             uint32_t *small, unsigned char *vis,
                             const uint8_t *src, size_t size, unsigned hb,
                             lzmesh_k2_q *q) {
@@ -11972,7 +11991,8 @@ static long lzmesh_w9_qtrace(void) {
 /* I5 direct (L9): h3+h2 unconditional, +h1 iff H1 on. le = last take end
  * (litrun at pos = pos-le; le>=pos forces litrun 0; le=0 keeps stock for
  * unknown contexts since pos>0 reads deep). */
-static void lzmesh_i5_direct(uint32_t *big, uint32_t *small,
+static inline __attribute__((always_inline)) void
+lzmesh_i5_direct(uint32_t *big, uint32_t *small,
                              const uint8_t *src, size_t size, size_t pos,
                              unsigned hb, size_t le,
                              const lzmesh_i5_mode *md,
@@ -12816,6 +12836,10 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
             r0have = lzmesh_u37_rep_best(src, size, pos + 1u, recent, 1u,
                                          &r0len, &r0dist, level,
                                          (level == 5 || (level == 9 && lzmesh_u8_relax_on())) ? 1 : 0);
+            /* P29-MF A2: D2 tier reuse (peek reuses the winning tier,
+             * no i4_tier recompute; sound: win at T implies higher heads
+             * failed and T passed, so i4 == T; P4 bedded 192048 exact). */
+            { int mf_htier = 0;
             if (level == 1)
                 hhave = lzmesh_s2_mx_best(src, size, pos + 1u, head,
                                           prev, hb, &hlen, &hdist, level,
@@ -12826,12 +12850,13 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
                                              small, hb, &hlen, &hdist,
                                              (level == 5 || (level == 9 && lzmesh_u8_relax_on())) ? 1 : 0,
                                              qlink, level, i5v,
-                                             i5md.ycon, i5md.ywin);
-            /* I4 FIX-A: L5 n1 peek is 7B-only (beds 12/12). */
-            if (level == 5 && hhave
-                && lzmesh_i4_tier(src, size, pos + 1u, big, small, hb)
-                    != 7)
+                                             i5md.ycon, i5md.ywin,
+                                             &mf_htier);
+            /* I4 FIX-A: L5 n1 peek is 7B-only (beds 12/12). Tier read
+             * only when hhave; fail paths leave 0. */
+            if (level == 5 && hhave && mf_htier != 7)
                 hhave = 0;
+            }
             /* F3: peek pos captured; the peek-store moves below the
              * lazy duels (outcome-known gating). n2 rep_best is
              * table-free, so the move is query-neutral. */
