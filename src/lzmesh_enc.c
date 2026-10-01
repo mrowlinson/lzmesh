@@ -11069,15 +11069,6 @@ static int lzmesh_wpins_s2dbg_at(size_t pos) {
     }
     return have && pos == (size_t)at;
 }
-static int lzmesh_w9_taketrace_on(void) {
-    static int init = 0, on = 0;
-    if (!init) {
-        init = 1;
-        on = (getenv("LZMESH_W9_TAKETRACE") != NULL);
-    }
-    return on;
-}
-
 static inline __attribute__((always_inline)) int
 lzmesh_s2_mx_best(const uint8_t *src, size_t size, size_t pos,
                              const int32_t *head, const int32_t *prev,
@@ -11207,8 +11198,6 @@ static int lzmesh_u1_mx_shadowed(const uint8_t *s, size_t n, size_t p) {
  * = miss, no fallthrough (E4 strict). Floors auto-satisfied (hit
  * at tier hd extends >= hd >= 3). History [0,pos) must be stored.
  * Returns 1 with blen/bdist set. */
-static int lzmesh_w9_qpick_on(void);
-static long lzmesh_w9_qtrace(void);
 /* YF fwd decl (defined below; h3 visited-gate). Precedes slot_best. */
 static int lzmesh_yf_svisg_on(void);
 static inline __attribute__((always_inline)) int
@@ -11216,7 +11205,7 @@ lzmesh_u37_slot_best(const uint8_t *src, size_t size, size_t pos,
                                 const uint32_t *big, const uint32_t *small,
                                 unsigned hb,
                                 uint32_t *blen, uint32_t *bdist,
-                                int relax, const uint32_t *sprev, int level,
+                                int relax, int level,
                                 const unsigned char *i5v,
                                 const unsigned char *ycon,
                                 const unsigned char *ywin,
@@ -11307,58 +11296,9 @@ lzmesh_u37_slot_best(const uint8_t *src, size_t size, size_t pos,
                 return 1;
             }
         }
-        /* W9: youngest present + in-range but head-differs: walk the
-         * writer chain newest-first; first verifier wins (E4: winner
-         * loss-fail = miss, no further walk). */
-        if (level == 9 && sprev != NULL && lzmesh_w9_qpick_on()
-            && q != LZMESH_U2_EMPTY && (size_t)q < pos) {
-            uint32_t c = sprev[q];
-            size_t steps = 0u;
-            while (c != LZMESH_U2_EMPTY && (size_t)c < pos
-                && (size_t)c < size && steps < size) {
-                steps++;
-                if (lzmesh_u2_head_eq(src + pos, src + c, 3u)) {
-                    uint32_t dist = (uint32_t)pos - c;
-                    uint32_t ln = lzmesh_u37_extend(src, size, pos,
-                                                   (size_t)c, 3u);
-                    if (ln < 3u || !lzmesh_u37_loss_ok(ln, dist, 0))
-                        return 0;
-                    *blen = ln;
-                    *bdist = dist;
-                    if (win_tier != NULL) /* P29-MF A2 (walk wins 3B) */
-                        *win_tier = 3;
-                    if (lzmesh_w9_taketrace_on())
-                        fprintf(stderr, "W9TAKE pos=%u young=%u win=%u depth=%u len=%u\n",
-                                (unsigned)pos, q, c, (unsigned)steps,
-                                ln);
-                    return 1;
-                }
-                c = sprev[c];
-            }
-        }
-        if ((long)pos == lzmesh_w9_qtrace()) {
-            uint32_t w = LZMESH_U2_EMPTY, c;
-            size_t depth = 0u, steps = 0u;
-            if (sprev != NULL && q != LZMESH_U2_EMPTY && (size_t)q < size)
-                c = sprev[q];
-            else
-                c = LZMESH_U2_EMPTY;
-            while (c != LZMESH_U2_EMPTY && (size_t)c < pos
-                && (size_t)c < size && steps < size) {
-                steps++;
-                depth++;
-                if (lzmesh_u2_head_eq(src + pos, src + c, 3u)) {
-                    w = c;
-                    break;
-                }
-                c = sprev[c];
-            }
-            fprintf(stderr, "W9Q pos=%u s=%u young=%u yv=%d win=%u depth=%u\n",
-                    (unsigned)pos, s, q,
-                    (q != LZMESH_U2_EMPTY && (size_t)q < pos
-                     && lzmesh_u2_head_eq(src + pos, src + q, 3u)) ? 1 : 0,
-                    w, (unsigned)depth);
-        }
+        /* P30-CHAIN: W9 walk deleted (chain dead: qlink never written
+         * since P23 V5; QPICK=1 vs base 0/12784 DIV + 0 takes FULL-bedded;
+         * YF-decline falls through to miss, as before). */
     }
     return 0;
 }
@@ -11374,7 +11314,7 @@ static int lzmesh_u37_best(const uint8_t *src, size_t size, size_t pos,
                            const uint32_t recent[4], uint32_t *blen,
                            uint32_t *bdist, int *is_rep, int level,
                            size_t last_m, size_t last_end, int last_rep,
-                           int relax, const uint32_t *sprev,
+                           int relax,
                            const unsigned char *i5v,
                            const unsigned char *ycon,
                            const unsigned char *ywin) {
@@ -11393,7 +11333,7 @@ static int lzmesh_u37_best(const uint8_t *src, size_t size, size_t pos,
         }
     } else {
         if (lzmesh_u37_slot_best(src, size, pos, big, small, hb, blen,
-                                 bdist, relax, sprev, level, i5v,
+                                 bdist, relax, level, i5v,
                                  ycon, ywin, NULL)) {
             *is_rep = 0;
             return 1;
@@ -11792,7 +11732,6 @@ typedef struct {
     int rsp;   /* LZMESH_I5_SPAN: big rule 0..5 (default 5, M3) */
     int rss;   /* LZMESH_I5_SSPAN: small rule 0..5 (default 5, L4) */
     uint32_t *f3skip; /* F3: per-h3slot pos skipped by gate (NULL off) */
-    uint32_t *qlink; /* W9: per-pos prev writer in same h3 slot (NULL off) */
     unsigned char *ycon; /* YF: per-pos take-consumed mark (NULL off) */
     unsigned char *ywin; /* YF: per-pos winpos (queried+won) mark (NULL off) */
     int u9;    /* LZMESH_U9_SKIP: M3-h2 narrow 0=stock 1=itm4 2=tendi3 3=td8
@@ -11822,7 +11761,6 @@ static void lzmesh_i5_mode_init(lzmesh_i5_mode *md) {
     md->rsp = lzmesh_i5_env("LZMESH_I5_SPAN", 5);
     md->rss = lzmesh_i5_env("LZMESH_I5_SSPAN", 5);
     md->f3skip = NULL;
-    md->qlink = NULL;
     md->ycon = NULL;
     md->ywin = NULL;
     md->u9 = lzmesh_i5_env("LZMESH_U9_SKIP", 6);
@@ -11948,46 +11886,10 @@ static int lzmesh_f3_storeg_on(void) {
     }
     return on;
 }
-/* W9 e09 query-pick fallback (LANE-W-E09BULK): at h3 query, when the
- * youngest slot resident is an in-range DIFF-KEY writer (head3 mismatch),
- * fall back to the previous writer iff it head-verifies (A-v-e09bulk-1/2
- * keymatch-priority: oracle reads older keymatch S over younger diff-key
- * Y; Y stored-but-unread-at-Q, 10/10 S-key/Y-diff). Newest-first
- * verify-skip walk over the per-slot writer chain (bedded depth 4 on
- * s06: 1604/1562/1561/1544); big tiers untouched; E4 strict kept
- * (first-verifier loss-fail = miss, no further walk); EMPTY/OOR
- * youngest = stock miss. L9-only (level==9 gate inside slot_best);
- * L1/L5 byte-identical. Env LZMESH_W9_QPICK (default 1 = ship;
- * 0 = stock). Trace: LZMESH_W9_QTRACE=pos dumps slot/young/winner. */
-static int lzmesh_w9_qpick_on(void) {
-    /* FALSIFIED wave-W (LANE-W-E09BULK): newest-first verify-skip walk
-     * agrees 16/1392 s09, 0/10 s06, 5/185 s11; every (role,depth,len)
-     * gate cell carries LIT-killers; s06 picks 1561-len3 over oracle
-     * 1544-len4. Default 0 = stock bytes. Kept (env=1) as a bedding
-     * tool (W9TAKE/QTRACE) for the store-side (T4-timing) follow-up. */
-    static int init = 0, on = 0;
-    if (!init) {
-        const char *e = getenv("LZMESH_W9_QPICK");
-        init = 1;
-        if (e != NULL && e[0] != '\0')
-            on = atoi(e) != 0;
-    }
-    return on;
-}
-static long lzmesh_w9_qtrace(void) {
-    static int init = 0;
-    static long pos = -1L;
-    if (!init) {
-        const char *e = getenv("LZMESH_W9_QTRACE");
-        init = 1;
-        if (e != NULL && e[0] != '\0')
-            pos = atol(e);
-    }
-    return pos;
-}
-/* P23-MIRROR V5: lzmesh_w9_prev_record deleted (last callers were the
- * span/flood/direct w9 records, removed; walk reads EMPTY under w9-on;
- * default-0 path unaffected — calls were NULL-safe no-ops there). */
+/* P30-CHAIN: W9 qpick/qtrace/taketrace + walk + qlink deleted. Chain
+ * dead: qlink never written since P23 V5 (w9_prev_record deleted);
+ * forced-QPICK vs base 0/12784 DIV + 0 takes FULL-bedded (HINT-P29-
+ * MFCHAIN sec1; tmp/p30chain/qpick_full.tsv). YF kept verbatim. */
 /* I5 direct (L9): h3+h2 unconditional, +h1 iff H1 on. le = last take end
  * (litrun at pos = pos-le; le>=pos forces litrun 0; le=0 keeps stock for
  * unknown contexts since pos>0 reads deep). */
@@ -12626,7 +12528,6 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
     unsigned char *i5v = NULL; /* I5: visited bitmap (L9 only) */
     unsigned char *i5m = NULL; /* I5-GRID-TEMP: take-m bitmap */
     unsigned char *i5ts = NULL; /* VEB: take-start bitmap (forward-marked) */
-    uint32_t *qlink = NULL; /* W9: per-pos h3 writer chain (L9 only) */
     unsigned char *ysp = NULL; /* YF: span+peek marks (2x size, L9 only) */
     unsigned char *stored = NULL; /* S4: L1 chain once-bitmap */
     uint32_t litrun = 0u;
@@ -12652,41 +12553,21 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
         }
     }
     if (lzmesh_i5_on(level)) { /* I5: visited + take-m bitmaps */
-        /* P16-FINDER QNULL: qlink is read ONLY by the W9 walk (gated
-         * LZMESH_W9_QPICK, default 0, falsified wave-W) and the W9Q
-         * trace fprintf (gated (long)pos==LZMESH_W9_QTRACE, default
-         * -1, unreachable since (long)pos>=0). Unarmed => every
-         * write dead: w9_prev_record NULL-safe, walk/trace blocks
-         * sprev!=NULL-guarded. Skip the 4n alloc+memset + ~1M
-         * stores/enc (text-256k). Armed => stock path verbatim
-         * (alloc+memset+writes+reads identical, incl OOM shape). */
-        int w9armed = (lzmesh_w9_qpick_on()
-            || lzmesh_w9_qtrace() != -1L) ? 1 : 0;
+        /* P30-CHAIN: W9 qlink alloc+memset deleted with the walk (dead;
+         * default-path allocs + OOM shape identical: unarmed path never
+         * allocated qlink since P16 QNULL). */
         i5v = (unsigned char *)calloc(size > 0u ? size : 1u, 1u);
         i5m = (unsigned char *)calloc(size > 0u ? size : 1u, 1u);
         i5ts = (unsigned char *)calloc(size > 0u ? size : 1u, 1u);
-        /* P10-TABINIT Q1: every byte overwritten with FF below; calloc
-         * zeroing was pure waste (8n traffic for a 4n array). malloc +
-         * memset halves qlink traffic; fully overwritten => byte-risk 0. */
-        if (w9armed)
-            qlink = (uint32_t *)malloc((size > 0u ? size : 1u) *
-                                       sizeof *qlink);
         ysp = (unsigned char *)calloc(size > 0u ? 2u * size : 2u, 1u);
-        if (i5v == NULL || i5m == NULL || i5ts == NULL
-            || (w9armed && qlink == NULL) || ysp == NULL) {
+        if (i5v == NULL || i5m == NULL || i5ts == NULL || ysp == NULL) {
             lzmesh_k2_free(&k2q); lzmesh_t4_free(&t4q);
             free(i5v);
             free(i5m);
             free(i5ts);
-            free(qlink);
             free(ysp);
             return 0;
         }
-        /* chain EMPTY is 0xFFFFFFFF: full overwrite (malloc above). */
-        /* P8-T2: memset-class fill, same bytes/bounds. */
-        if (w9armed)
-            memset(qlink, 0xFF, size * sizeof *qlink);
-        i5md.qlink = qlink;
         i5md.ycon = ysp;
         i5md.ywin = ysp + (size > 0u ? size : 1u);
         i5ts[0] = 1u; /* first take starts at 0 */
@@ -12739,7 +12620,7 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
         }
         chave = lzmesh_u37_best(src, size, pos, head, prev, big, small,
                                 hb, recent, &clen, &cdist, &cis_rep,
-                                level, last_m, last_end, last_rep, 0, qlink,
+                                level, last_m, last_end, last_rep, 0,
                                 i5v, i5md.ycon, i5md.ywin);
         /* YF: winpos mark (queried+won; L9). */
         if (chave && level == 9 && i5md.ywin != NULL && pos < size)
@@ -12849,7 +12730,7 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
                 hhave = lzmesh_u37_slot_best(src, size, pos + 1u, big,
                                              small, hb, &hlen, &hdist,
                                              (level == 5 || (level == 9 && lzmesh_u8_relax_on())) ? 1 : 0,
-                                             qlink, level, i5v,
+                                             level, i5v,
                                              i5md.ycon, i5md.ywin,
                                              &mf_htier);
             /* I4 FIX-A: L5 n1 peek is 7B-only (beds 12/12). Tier read
@@ -13067,7 +12948,7 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
         }
         if (ntok >= tokcap) {
             lzmesh_k2_free(&k2q); lzmesh_t4_free(&t4q);
-            free(i5v); free(ysp); free(i5m); free(i5ts); free(qlink); /* I5+W9 */
+            free(i5v); free(ysp); free(i5m); free(i5ts); /* I5 */
             free(stored); /* S4 */
             return 0;
         }
@@ -13322,7 +13203,7 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
                                       span_lo, i5v, i5m, cdist, &i5md);
                 else if (!lzmesh_t4_append(&t4q, &t4e)) {
                     lzmesh_k2_free(&k2q); lzmesh_t4_free(&t4q);
-                    free(i5v); free(ysp); free(i5m); free(i5ts); free(qlink); /* I5+W9 */
+                    free(i5v); free(ysp); free(i5m); free(i5ts); /* I5 */
                     free(stored); /* S4 */
                     return 0;
                 }
@@ -13408,7 +13289,7 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
     if (globrun > 0u) {
         if (ntok >= tokcap || ntok + 1u > size) {
             lzmesh_k2_free(&k2q); lzmesh_t4_free(&t4q);
-            free(i5v); free(ysp); free(i5m); free(i5ts); free(qlink); /* I5+W9 */
+            free(i5v); free(ysp); free(i5m); free(i5ts); /* I5 */
             free(stored); /* S4 */
             return 0;
         }
@@ -13421,12 +13302,12 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
     }
     if (ntok == 0u || ntok > size) {
         lzmesh_k2_free(&k2q); lzmesh_t4_free(&t4q);
-        free(i5v); free(ysp); free(i5m); free(i5ts); free(qlink); /* I5+W9 */
+        free(i5v); free(ysp); free(i5m); free(i5ts); /* I5 */
         free(stored); /* S4 */
         return 0;
     }
     lzmesh_k2_free(&k2q); lzmesh_t4_free(&t4q);
-    free(i5v); free(ysp); free(i5m); free(i5ts); free(qlink); /* I5+W9 */
+    free(i5v); free(ysp); free(i5m); free(i5ts); /* I5 */
     free(stored); /* S4 */
     return ntok;
 }
