@@ -116,6 +116,37 @@ bench-ab: $(LIB) $(BENCH)
 bench-gated-selftest:
 	sh bench/selftest_gated.sh
 
+# Gap matrix (lane matrix-harness): interleaved port-vs-Apple over the full
+# 24 cells, BOTH sides in-process (abench dlopens libcompression; the
+# oracle-bench.py pipe is NOT used). encdump byte-compares every run.
+#   matrix-bins    build lib + bench + abench + encdump (no run)
+#   matrix-gated   full matrix, n = MATRIX_RUNS x MATRIX_REPS (70);
+#                  cmp with: python3 bench/cmp.py results/matrix/port results/matrix/apple
+# Knobs: MATRIX_RUNS=10 MATRIX_REPS=7 MATRIX_LEVELS="" MATRIX_COOLDOWN_SECS=20
+#   + BENCH_* passthrough (BENCH_MAXLOAD_MULT=2 BENCH_NOPIN= BENCH_FORCE=);
+#   ORACLE_LIB selects the Apple build (default: system lib).
+ABENCH := bench/abench
+ENCDUMP := bench/encdump
+MATRIX_RUNS ?= 10
+MATRIX_REPS ?= 7
+MATRIX_LEVELS ?=
+MATRIX_COOLDOWN_SECS ?= 20
+
+$(ABENCH): bench/abench.c
+	$(CC) $(CFLAGS) -o $@ $< -ldl
+
+$(ENCDUMP): bench/encdump.c $(LIB)
+	$(CC) $(CFLAGS) -o $@ $< $(LIB) -ldl
+
+matrix-bins: $(LIB) $(BENCH) $(ABENCH) $(ENCDUMP)
+
+matrix-gated: $(LIB) $(BENCH) $(ABENCH) $(ENCDUMP)
+	@if [ -z "$(CORPUS)" ]; then \
+		echo "no corpus: run 'make bench-corpus' first"; exit 1; fi
+	MATRIX_RUNS=$(MATRIX_RUNS) MATRIX_REPS=$(MATRIX_REPS) MATRIX_LEVELS="$(MATRIX_LEVELS)" \
+	MATRIX_COOLDOWN_SECS=$(MATRIX_COOLDOWN_SECS) \
+	sh bench/matrix_gated.sh results/matrix ./$(BENCH) ./$(ABENCH) ./$(ENCDUMP) $(CORPUS)
+
 bench-corpus:
 	python3 bench/mkcorpus.py bench/corpus
 	python3 bench/mkcorpus.py --check bench/corpus

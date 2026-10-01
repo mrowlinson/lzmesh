@@ -11237,11 +11237,7 @@ lzmesh_u37_extend_neon(const uint8_t *src, size_t size,
 
 /* P3-N1: scalar force hook. LZMESH_SCALAR=1 (runtime, cached read-once per
  * P2-GETENV pattern) or -DLZMESH_SCALAR (compile time) selects scalar. */
-/* R2-ENC9 A4 DRAIN-FUSE: fuse the 7 remaining executed calls in u37_parse
- * (MSH-shape: hot path call-free; linked -O2 census: i5_tr x6 / i4_flush
- * x5 / t4_drain x3 / scalar x3 / svisg x2 / catchup x2 / mf_head_eq x1
- * cold-tail). Pure force-inline, zero behavior change by construction. */
-static inline __attribute__((always_inline)) int lzmesh_p3_scalar_on(void) {
+static int lzmesh_p3_scalar_on(void) {
 #ifdef LZMESH_SCALAR
     return 1;
 #else
@@ -11571,8 +11567,7 @@ static int lzmesh_u1_mx_shadowed(const uint8_t *s, size_t n, size_t p) {
  * at tier hd extends >= hd >= 3). History [0,pos) must be stored.
  * Returns 1 with blen/bdist set. */
 /* YF fwd decl (defined below; h3 visited-gate). Precedes slot_best. */
-/* R2-ENC9 A4: fuse (was outline x2 in parse). */
-static inline __attribute__((always_inline)) int lzmesh_yf_svisg_on(void);
+static int lzmesh_yf_svisg_on(void);
 static inline __attribute__((always_inline)) int
 lzmesh_u37_slot_best(const uint8_t *src, size_t size, size_t pos,
                                 const uint32_t *big, const uint32_t *small,
@@ -11947,9 +11942,7 @@ static void lzmesh_i4_windows(int32_t *head, int32_t *prev,
 }
 
 /* Drain pending catch-up in base order (rep-m, span, windows). */
-/* R2-ENC9 A4: fuse (was outline x5 in parse via k2_drain loop). */
-static inline __attribute__((always_inline)) void
-lzmesh_i4_flush(int32_t *head, int32_t *prev,
+static void lzmesh_i4_flush(int32_t *head, int32_t *prev,
                             uint32_t *big, uint32_t *small,
                             unsigned char *vis,
                             const uint8_t *src, size_t size, unsigned hb,
@@ -12066,8 +12059,7 @@ static int lzmesh_t4_in_drain = 0; /* T4: set during queue replay. */
  * empty-string arms slot 0 (e != NULL, no e[0] check). */
 static int lzmesh_i5_tr_init = 0, lzmesh_i5_tr_have = 0;
 static long lzmesh_i5_tr_slot = -1L;
-/* R2-ENC9 A4: fuse (per-store trace gate; cold fprintf stays outline). */
-static inline __attribute__((always_inline)) void lzmesh_i5_tr_parse(void) {
+static void lzmesh_i5_tr_parse(void) {
     if (!lzmesh_i5_tr_init) {
         const char *e = getenv("LZMESH_I5_SLOT");
         lzmesh_i5_tr_init = 1;
@@ -12081,9 +12073,7 @@ static int lzmesh_i5_tr_armed(void) {
     lzmesh_i5_tr_parse();
     return lzmesh_i5_tr_have;
 }
-/* R2-ENC9 A4: fuse (was outline x6 in parse, executed per store). */
-static inline __attribute__((always_inline)) void
-lzmesh_i5_tr(uint32_t s, size_t pos, const char *op) {
+static void lzmesh_i5_tr(uint32_t s, size_t pos, const char *op) {
     /* P2-GETENV: slot filter parsed once (read-once-at-first-call). */
     lzmesh_i5_tr_parse();
     if (lzmesh_i5_tr_have && (uint32_t)lzmesh_i5_tr_slot == s)
@@ -12354,9 +12344,7 @@ static int lzmesh_upins_lega_on(void) {
  * Q1: h3 end-1 skip iff runlen>=4 (n=15 natural 3|4 exact + RIG2 causal
  * s14@25 rl3->5 STORE->SKIP at fixed EMPTY slot/geometry; EMPTY dead).
  * h3 path only; h2 end-1 untouched (boundary open, filed). L9-only. */
-/* R2-ENC9 A4: fuse (de-outlined x7 in parse after catchup fuse; sole caller). */
-static inline __attribute__((always_inline)) void
-lzmesh_i5_span(uint32_t *big, uint32_t *small,
+static void lzmesh_i5_span(uint32_t *big, uint32_t *small,
                            const uint8_t *src, size_t size,
                            size_t span_lo, size_t end,
                            unsigned hb, const unsigned char *i5v,
@@ -12482,9 +12470,7 @@ static void lzmesh_i5_skipback(uint32_t *big,
 
 /* I5 catchup (L9): H1 shape, conditional span (h2/h3, no h1),
  * forward windows h2-only W8. L1 MX path verbatim (unreached at L9). */
-/* R2-ENC9 A4: fuse (was outline x2 in parse + x1 in t4_drain). */
-static inline __attribute__((always_inline)) void
-lzmesh_i5_catchup(int32_t *head, int32_t *prev,
+static void lzmesh_i5_catchup(int32_t *head, int32_t *prev,
                               uint32_t *big, uint32_t *small,
                               unsigned char *vis,
                               const uint8_t *src, size_t size,
@@ -12677,9 +12663,7 @@ static int lzmesh_t4_append(lzmesh_t4_q *q, const lzmesh_t4_pend *e) {
     q->n++;
     return 1;
 }
-/* R2-ENC9 A4: fuse (was outline x3 in parse: L9 peek/skip/take drains). */
-static inline __attribute__((always_inline)) void
-lzmesh_t4_drain(int32_t *head, int32_t *prev, uint32_t *big,
+static void lzmesh_t4_drain(int32_t *head, int32_t *prev, uint32_t *big,
                             uint32_t *small, unsigned char *vis,
                             const uint8_t *src, size_t size, unsigned hb,
                             int level, const unsigned char *i5v,
@@ -15638,8 +15622,7 @@ static int lzmesh_yf_l9cut_on(void) {
  * at runs 1/6/11 (S-side, Q-side dead). Blanket visited-gate falsified
  * (121 NEW); span/peek marks superseded by consumed/winpos (15 NEW).
  * LZMESH_YF_SVISG=0 disables (default 1 = ship). L9-only. */
-/* R2-ENC9 A4: fuse (matches fwd decl; was outline x2 in parse). */
-static inline __attribute__((always_inline)) int lzmesh_yf_svisg_on(void) {
+static int lzmesh_yf_svisg_on(void) {
     static int init = 0, on = 1; /* P2-GETENV: cached (was per-call) */
     if (!init) {
         const char *e = getenv("LZMESH_YF_SVISG");

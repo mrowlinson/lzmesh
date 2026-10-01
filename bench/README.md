@@ -46,3 +46,29 @@ recorded baseline.)
 Throughput convention: encode MiB/s over input bytes, decode MiB/s over
 decoded (output) bytes. Aggregation (median/p10-p90 over samples) is
 done by the run driver, not the harness; see `../docs/PERF.md`.
+
+## Gap matrix (lane matrix-harness)
+
+Full 24-cell port-vs-Apple comparison (3 corpus x 0/1/5/9 x enc/dec)
+with BOTH sides in-process — the `oracle-bench.py` pipe is not used.
+
+- `abench.c` — Apple in-process mirror of `bench.c`: same CLI/TSV/exit
+  codes, `compression_encode/decode_buffer` via dlopen (`ORACLE_LIB`
+  selects the build, default system lib). Build: `make matrix-bins`.
+- `encdump.c` — in-process port-vs-Apple byte comparator + both-way
+  cross-decode; one TSV row per (file, level), `IDENT`/`DIV@off`/`X-OK`.
+- `matrix_gated.sh` — interleaved driver: per (file, level) cell, port
+  and Apple run back-to-back through `run_gated.sh` (per-cell load gate
+  + P-core pin record), side order flipped by run parity. Stitches
+  `port/runN.tsv` + `apple/runN.tsv` with `# matrix v2` headers
+  (box/load/pin/build-sha) that `cmp.py` reads unchanged, plus
+  `bytes/runN.tsv` and a `raw/` audit trail. `make matrix-gated`
+  (n = `MATRIX_RUNS` x `MATRIX_REPS` = 70).
+- `air/` — gate-ready Air job: `air_matrix.sh` (phase B submits
+  untouched after `easy-ssh push`), `oraclegate.py` +
+  `oracle-air.pinned` (24-vector pinned Air oracle, macOS 27; the gate
+  halts on drift — re-pin deliberately, never silently).
+
+Zeros/dec-floor hazard: zeros-64k and L0-dec cells sit at the timer
+floor (quantized bands, e.g. flat 31250.00) — record, never quote.
+Verdicts that matter are the slow cells (text/mixed enc L5/L9).

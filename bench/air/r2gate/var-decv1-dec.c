@@ -1541,14 +1541,8 @@ static int lz_u6h_substream(struct lz_u3_lanes *lanes, uint32_t count,
      * exits write back lane bpos first — same symbol, same lanes state
      * as the checked loop. */
     i = (uint32_t)0;
-    /* R2-V2: re-guard loop. Each phase proves a fresh guard-once prefix
-     * from CURRENT bpos (budget is monotone in start, so re-guarding is
-     * still sufficient); phases repeat while >=8 symbols are provable.
-     * Converts L0's ~50% checked tail (bit-leg-capped npre) into u32
-     * rounds. Lane alignment holds every phase (i stays a multiple of
-     * 8, round-robin restarts at lane 0); i strictly grows => ends. */
-    for (;;) {
-        size_t npre = (size_t)used - (size_t)i;
+    {
+        size_t npre = (size_t)used;
         size_t nrounds;
         int k;
         for (k = 0; k < 8; k++) {
@@ -1581,7 +1575,7 @@ static int lz_u6h_substream(struct lz_u3_lanes *lanes, uint32_t count,
             size_t r;
             uint32_t v;
             for (r = (size_t)0; r < nrounds; r++) {
-                size_t r8 = (size_t)i + r * (size_t)8;
+                size_t r8 = r * (size_t)8;
                 LZ_U6H_DEC(q0, c0, meta_tab, (uint32_t)5, (uint32_t)0x1F);
                 if (v > (uint32_t)10) {
                     LZ_U6H_V10FAIL();
@@ -1624,9 +1618,7 @@ static int lz_u6h_substream(struct lz_u3_lanes *lanes, uint32_t count,
                 tmp[r8 + (size_t)7] = (uint8_t)v;
             }
             LZ_U6H_WB8();
-            i += (uint32_t)(nrounds * (size_t)8);
-        } else {
-            break;
+            i = (uint32_t)(nrounds * (size_t)8);
         }
     }
     for (; i < used; i++) {
@@ -1678,9 +1670,8 @@ static int lz_u6h_substream(struct lz_u3_lanes *lanes, uint32_t count,
     /* P10-symdec: guard-once + x8 rounds, same shape as the meta loop
      * above (maxlen 10, mask 0x3FF, no v>10 check). */
     i = (uint32_t)0;
-    /* R2-V2: re-guard loop, same shape as the meta loop above. */
-    for (;;) {
-        size_t npre = (size_t)count - (size_t)i;
+    {
+        size_t npre = (size_t)count;
         size_t nrounds;
         int k;
         for (k = 0; k < 8; k++) {
@@ -1713,7 +1704,7 @@ static int lz_u6h_substream(struct lz_u3_lanes *lanes, uint32_t count,
             size_t r;
             uint32_t v;
             for (r = (size_t)0; r < nrounds; r++) {
-                size_t r8 = (size_t)i + r * (size_t)8;
+                size_t r8 = r * (size_t)8;
                 LZ_U6H_DEC(q0, c0, main_tab, (uint32_t)10, (uint32_t)0x3FF);
                 out[r8] = (uint8_t)v;
                 LZ_U6H_DEC(q1, c1, main_tab, (uint32_t)10, (uint32_t)0x3FF);
@@ -1732,9 +1723,7 @@ static int lz_u6h_substream(struct lz_u3_lanes *lanes, uint32_t count,
                 out[r8 + (size_t)7] = (uint8_t)v;
             }
             LZ_U6H_WB8();
-            i += (uint32_t)(nrounds * (size_t)8);
-        } else {
-            break;
+            i = (uint32_t)(nrounds * (size_t)8);
         }
     }
     for (; i < count; i++) {
