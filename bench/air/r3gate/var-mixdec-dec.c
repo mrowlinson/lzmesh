@@ -384,8 +384,7 @@ uint32_t lz_u3_dist(uint32_t sb, uint32_t low3, uint32_t suffix) {
 extern char *getenv(const char *name);
 /* P3-N2 runtime gate: LZMESH_SCALAR set in env forces scalar at runtime.
  * Cached read-once (P2-getenv style); per-call cost is one static load. */
-/* R3-V1: force-inline (replay hot path; profile showed real calls/token). */
-static inline __attribute__((always_inline)) int lz_u3_neon_ok(void) {
+static int lz_u3_neon_ok(void) {
     static int init = 0;
     static int on = 1;
     if (init == 0) {
@@ -444,9 +443,8 @@ static void lz_u3_mc_st64(uint8_t *p, uint64_t v) {
  * reads [t-d,t-d+k), fully written iff t-d+k<=t iff k<=d. Callers
  * pass s = t-d with those widths, so every op reads final bytes by
  * construction. Exact: writes exactly r bytes, never overruns. */
-/* R3-V1: force-inline (replay hot path; profile showed real calls/token). */
-static inline __attribute__((always_inline)) void lz_u3_mc_tail(
-    uint8_t *t, const uint8_t *s, size_t r, uint32_t d) {
+static void lz_u3_mc_tail(uint8_t *t, const uint8_t *s, size_t r,
+                          uint32_t d) {
     if (r >= (size_t)4 && d >= (uint32_t)4) {
         lz_u3_mc_st32(t, lz_u3_mc_ld32(s));
         t += (size_t)4;
@@ -477,9 +475,8 @@ static inline __attribute__((always_inline)) void lz_u3_mc_tail(
  * pure history) + the same capped tail. All paths exact-n, no
  * overrun reads or writes; overlap behavior == single forward loop
  * (each op's source sits fully below its dest start). */
-/* R3-V1: force-inline (replay hot path; profile showed real calls/token). */
-static inline __attribute__((always_inline)) void lz_u3_match_copy_scalar(
-    uint8_t *dst, size_t w, uint32_t d, size_t n) {
+static void lz_u3_match_copy_scalar(uint8_t *dst, size_t w, uint32_t d,
+                                    size_t n) {
     size_t i;
     size_t n8;
     uint8_t *t;
@@ -578,9 +575,7 @@ static inline __attribute__((always_inline)) void lz_u3_match_copy_scalar(
  * Tail (n%16) and all d<16 keep the proven scalar paths above, so the
  * NEON path is byte-identical by construction. Exact-n: no overrun
  * (bulk covers only n&~15, tail covers the rest). */
-/* R3-V1: force-inline (replay hot path; profile showed real calls/token). */
-static inline __attribute__((always_inline)) void lz_u3_match_copy(
-    uint8_t *dst, size_t w, uint32_t d, size_t n) {
+static void lz_u3_match_copy(uint8_t *dst, size_t w, uint32_t d, size_t n) {
     /* R3-MIXDEC d>=n: forward copy reads [w-d,w-d+n); d>=n puts every
      * source byte strictly below dest start w (C13: d>=1, d<=w), so the
      * ranges are non-overlapping and a plain memcpy is byte-identical.
@@ -1934,9 +1929,8 @@ static int lz_u3_fetch(const uint8_t *blk, uint32_t bo, uint32_t fo,
 
 /* u6b D-B2: substream byte reader for RAW/REPEAT/HUFFMAN-decoded.
  * mode 0=RAW,1=REPEAT,2=HUFFMAN (p=decoded buf). FAIL on overrun/NULL. */
-/* R3-V1: force-inline (replay hot path; profile showed real calls/token). */
-static inline __attribute__((always_inline)) int lz_u3_ss_byte(
-    const struct lz_u3_ss *ss, uint32_t pos, uint8_t *out) {
+static int lz_u3_ss_byte(const struct lz_u3_ss *ss, uint32_t pos,
+                         uint8_t *out) {
     if (pos >= ss->n) {
         return LZ_U3_FAIL;
     }
@@ -1975,10 +1969,9 @@ static int lz_c19_len_overlong_accept(uint32_t u) {
  * u6p WRAP: escape+u32 is wide (no length-wrap clause exists; S6.3 blesses
  * u32 wrap ONLY for distance). *wrapped=1 + saturated UINT32_MAX out when
  * the sum overflows; both callers reject (lit C18, match C16-class). */
-/* R3-V1: force-inline (replay hot path; profile showed real calls/token). */
-static inline __attribute__((always_inline)) int lz_u3_decode_len(
-    uint32_t shortv, uint32_t escape, const struct lz_u3_ss *ss_len,
-    uint32_t *len_used, uint32_t *out, int *wrapped) {
+static int lz_u3_decode_len(uint32_t shortv, uint32_t escape,
+                            const struct lz_u3_ss *ss_len, uint32_t *len_used,
+                            uint32_t *out, int *wrapped) {
     uint8_t eb;
     uint8_t b0;
     uint8_t b1;
@@ -2027,10 +2020,8 @@ static inline __attribute__((always_inline)) int lz_u3_decode_len(
  * 258->5B step + litc==1/lit-field-0 pin it. Choice G-u6b-LIT1.
  * u6p WRAP: wrapped escape+u32 means true run is giant -> C18-class FAIL
  * (S4.3 overhang->C18; e00 REV-8 reject mechanism). */
-/* R3-V1: force-inline (replay hot path; profile showed real calls/token). */
-static inline __attribute__((always_inline)) int lz_u3_lit_run(
-    uint32_t lit_f, const struct lz_u3_ss *ss_len, uint32_t *len_used,
-    uint32_t *run) {
+static int lz_u3_lit_run(uint32_t lit_f, const struct lz_u3_ss *ss_len,
+                         uint32_t *len_used, uint32_t *run) {
     int wrapped = 0;
     if (lz_u3_decode_len(lit_f, (uint32_t)3, ss_len, len_used, run,
                          &wrapped) != LZ_U3_OK) {
@@ -2045,10 +2036,9 @@ static inline __attribute__((always_inline)) int lz_u3_lit_run(
  * before match copy). S4.4 term-clamp does NOT cover u32 overflow
  * (COMP-R6 0/7: oracle refuses; S6.3 blesses wrap ONLY for distance).
  * u6p saturate-clamp was oracle-refuted; lit leg (FAIL on wrap) kept. */
-/* R3-V1: force-inline (replay hot path; profile showed real calls/token). */
-static inline __attribute__((always_inline)) int lz_u3_match_len(
-    uint32_t sel, uint32_t len_f, const struct lz_u3_ss *ss_len,
-    uint32_t *len_used, uint32_t *mlen) {
+static int lz_u3_match_len(uint32_t sel, uint32_t len_f,
+                           const struct lz_u3_ss *ss_len, uint32_t *len_used,
+                           uint32_t *mlen) {
     uint32_t lshort;
     uint32_t esc;
     uint32_t mc = (uint32_t)0;
@@ -2075,9 +2065,8 @@ static inline __attribute__((always_inline)) int lz_u3_match_len(
 /* u6b D-B3: suffix bit reader LSB-first from lane (Q7/S6.1). nbits=sb
  * (0..31); sb0 reads 0 bits (slot still advances via idx). Strict bounds
  * (no overread tolerance); R-011 corners accepted, gated RAW-only. */
-/* R3-V1: force-inline (replay hot path; profile showed real calls/token). */
-static inline __attribute__((always_inline)) int lz_u3_suffix_bits(
-    struct lz_u3_lane *lane, uint32_t nbits, uint32_t *out) {
+static int lz_u3_suffix_bits(struct lz_u3_lane *lane, uint32_t nbits,
+                             uint32_t *out) {
     /* P2-bitio: byte-window loads + shift/mask (bounds pre-checked, so
      * all window bytes are in-bounds; same bits, same verdicts). */
     size_t pos;

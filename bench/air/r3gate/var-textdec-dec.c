@@ -409,11 +409,6 @@ static inline __attribute__((always_inline)) int lz_u3_neon_ok(void) {
 #undef memcpy
 #endif
 extern void *memcpy(void *dst, const void *src, size_t n);
-/* R3-MIXDEC: memset for REPEAT-lit fill (same no-libc-header convention). */
-#ifdef memset
-#undef memset
-#endif
-extern void *memset(void *dst, int c, size_t n);
 static uint16_t lz_u3_mc_ld16(const uint8_t *p) {
     uint16_t v;
     memcpy(&v, p, 2);
@@ -581,14 +576,6 @@ static inline __attribute__((always_inline)) void lz_u3_match_copy_scalar(
 /* R3-V1: force-inline (replay hot path; profile showed real calls/token). */
 static inline __attribute__((always_inline)) void lz_u3_match_copy(
     uint8_t *dst, size_t w, uint32_t d, size_t n) {
-    /* R3-MIXDEC d>=n: forward copy reads [w-d,w-d+n); d>=n puts every
-     * source byte strictly below dest start w (C13: d>=1, d<=w), so the
-     * ranges are non-overlapping and a plain memcpy is byte-identical.
-     * Mixed L1/L5/L9: ~90% of calls (d256+ x n<128 histogram). */
-    if (n != (size_t)0 && (size_t)d >= n) {
-        memcpy(dst + w, dst + w - (size_t)d, n);
-        return;
-    }
 #if LZ_U3_HAVE_NEON
     if (d >= (uint32_t)16 && n >= (size_t)16 && lz_u3_neon_ok() != 0) {
         size_t n16 = n & ~((size_t)15);
@@ -2119,9 +2106,43 @@ static inline __attribute__((always_inline)) int lz_u3_suffix_bits(
 
 /* u6b D-B3: C14 dist-resolve (S4.3/S3.9/Q17 + S3.11/Q7). rep sel<=3 via
  * MTF (rep3 accept, no dist consume). new sel>=4: dsym=dist[dist_used++],
- * sb=dsym>>3 low3=dsym&7, suffix sb bits from lane idx%8, d via dist.
- * R3-MIXDEC: folded inline into lz_u3_replay step (3) (leg-for-leg, see
- * there); the outline copy is deleted to keep -Wall -Wextra clean. */
+ * sb=dsym>>3 low3=dsym&7, suffix sb bits from lane idx%8, d via dist. */
+/* R3-V1: force-inline (replay hot path; profile showed real calls/token). */
+static inline __attribute__((always_inline)) int lz_u3_dist_resolve(
+    uint32_t sel, const uint32_t *recent, const struct lz_u3_ss *ss_dist,
+    uint32_t *dist_used, struct lz_u3_lanes *lanes, uint32_t *d) {
+    uint8_t dsym = (uint8_t)0;
+    uint32_t idx;
+    uint32_t sb;
+    uint32_t low3;
+    uint32_t suffix = (uint32_t)0;
+    if (recent == NULL || d == NULL) {
+        return LZ_U3_FAIL;
+    }
+    if (sel <= (uint32_t)3) {
+        *d = recent[sel];
+        return LZ_U3_OK;
+    }
+    if (ss_dist == NULL || dist_used == NULL || lanes == NULL) {
+        *d = (uint32_t)0;
+        return LZ_U3_FAIL;
+    }
+    if (lz_u3_ss_byte(ss_dist, *dist_used, &dsym) != LZ_U3_OK) {
+        *d = (uint32_t)0;
+        return LZ_U3_FAIL;
+    }
+    idx = *dist_used;
+    *dist_used += (uint32_t)1;
+    sb = (uint32_t)dsym >> 3;
+    low3 = (uint32_t)dsym & (uint32_t)7;
+    if (lz_u3_suffix_bits(&lanes->l[idx % (uint32_t)8], sb, &suffix) !=
+        LZ_U3_OK) {
+        *d = (uint32_t)0;
+        return LZ_U3_FAIL;
+    }
+    *d = lz_u3_dist(sb, low3, suffix);
+    return LZ_U3_OK;
+}
 
 /* E1 replay (S4.3/u2 contract). Consumes decoded streams (fetch-owned) +
  * suffix lanes (D-B3, mutable bitpos). dst full buf, w_tot pre-bytes (C13);
@@ -2145,35 +2166,6 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
     uint32_t lit_mode = ss[2].mode;
     const uint8_t *lit_p = ss[2].p;
     uint8_t lit_fill = ss[2].fill;
-    /* R3-MIXDEC: hoisted replay invariants. ss is immutable in replay;
-     * lane p/bs_end are invariant (only bitpos advances, kept live in
-     * lanes so every exit observes identical state). Caps replicate
-     * lz_u3_lane_cap bit-for-bit (same guards, same arithmetic). */
-    uint32_t dist_mode = ss[3].mode;
-    const uint8_t *dist_p = ss[3].p;
-    uint8_t dist_fill = ss[3].fill;
-    uint32_t dist_n = ss[3].n;
-    uint32_t lit_n = ss[2].n;
-    size_t lit_bound =
-        (size_t)ss[0].n + (size_t)lz_u2_round32(ss[2].n) - (size_t)1;
-    const uint8_t *lane_p[8];
-    size_t lane_cbits[8];
-    size_t lane_cby[8];
-    int fq;
-    for (fq = 0; fq < 8; fq++) {
-        if (lanes == NULL || lanes->l[fq].p == NULL ||
-            lanes->l[fq].bs_end == NULL ||
-            lanes->l[fq].bs_end < lanes->l[fq].p) {
-            lane_p[fq] = NULL;
-            lane_cbits[fq] = (size_t)0;
-            lane_cby[fq] = (size_t)0;
-        } else {
-            lane_p[fq] = lanes->l[fq].p;
-            lane_cby[fq] =
-                (size_t)(lanes->l[fq].bs_end - lanes->l[fq].p);
-            lane_cbits[fq] = lane_cby[fq] * (size_t)8;
-        }
-    }
     *out_n = (size_t)0;
     *cap_hit = 0;
     /* u6b D-B5: first-byte pre-emit (S4.1/Q18). Entry pos 1, literals[0]
@@ -2205,8 +2197,6 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
         uint32_t run = (uint32_t)0;
         uint32_t mlen = (uint32_t)0;
         uint32_t d = (uint32_t)0;
-        uint32_t ml_short = (uint32_t)0;
-        uint32_t ml_esc = (uint32_t)0;
         uint32_t i;
         size_t take;
         int lok;
@@ -2229,15 +2219,8 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
         lit_f = ((uint32_t)t >> 6) & (uint32_t)3;
         sel = ((uint32_t)t >> 3) & (uint32_t)7;
         len_f = (uint32_t)t & (uint32_t)7;
-        /* (1) lit-len decode, C16 fail -> reject BEFORE any copy.
-         * R3-MIXDEC: inline short leg (lit_f!=3 => run=lit_f, OK is the
-         * decode_len short!=escape leg verbatim); escape leg calls out. */
-        if (lit_f != (uint32_t)3) {
-            run = lit_f;
-            lok = LZ_U3_OK;
-        } else {
-            lok = lz_u3_lit_run(lit_f, &ss[1], &len_used, &run);
-        }
+        /* (1) lit-len decode, C16 fail -> reject BEFORE any copy. */
+        lok = lz_u3_lit_run(lit_f, &ss[1], &len_used, &run);
         if (lz_u2_c16_ok(lok) != LZ_U2_OK) {
             return LZ_U3_FAIL;
         }
@@ -2261,15 +2244,16 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
          * Apple reads past lit end). Fully-consumed runs (take==run)
          * always pass (lu+run<=litc<=bound, tokc>=1); valid streams
          * take identical paths. size_t arithmetic: u32 sum can wrap. */
-        if ((size_t)lit_used + (size_t)run > lit_bound) {
+        if ((size_t)lit_used + (size_t)run >
+            (size_t)ss[0].n + (size_t)lz_u2_round32(ss[2].n) - (size_t)1) {
             return LZ_U3_FAIL;
         }
         take = (size_t)run;
         if (take > (size_t)ds - wblk) {
             take = (size_t)ds - wblk;
         }
-        if (lit_used > lit_n ||
-            take > (size_t)lit_n - (size_t)lit_used) {
+        if (lit_used > ss[2].n ||
+            take > (size_t)ss[2].n - (size_t)lit_used) {
             return LZ_U3_FAIL; /* overruns lit stream: C18-class */
         }
         if (wblk >= room) {
@@ -2280,13 +2264,16 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
         if (take > room - wblk) {
             size_t nn = room - wblk;
             size_t k;
-            /* P2-bitio: direct lit copy (bounds verified above).
-             * R3-MIXDEC: word copy (lit stream and dst are distinct
-             * buffers, so memcpy/memset are byte-identical). */
+            /* P2-bitio: direct lit copy (bounds verified above). */
             if (lit_mode == (uint32_t)1) {
-                memset(dst + w_tot + wblk, lit_fill, nn);
+                for (k = (size_t)0; k < nn; k++) {
+                    dst[w_tot + wblk + k] = lit_fill;
+                }
             } else if (lit_p != NULL) {
-                memcpy(dst + w_tot + wblk, lit_p + lit_used, nn);
+                for (k = (size_t)0; k < nn; k++) {
+                    dst[w_tot + wblk + k] =
+                        lit_p[lit_used + (uint32_t)k];
+                }
             } else {
                 for (k = (size_t)0; k < nn; k++) {
                     uint8_t lb = (uint8_t)0;
@@ -2301,12 +2288,15 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
             *cap_hit = 1;
             return LZ_U3_OK;
         }
-        /* P2-bitio: direct lit copy (bounds verified above).
-         * R3-MIXDEC: word copy (see cap-hit leg above). */
+        /* P2-bitio: direct lit copy (bounds verified above). */
         if (lit_mode == (uint32_t)1) {
-            memset(dst + w_tot + wblk, lit_fill, take);
+            for (i = (uint32_t)0; i < take; i++) {
+                dst[w_tot + wblk + (size_t)i] = lit_fill;
+            }
         } else if (lit_p != NULL) {
-            memcpy(dst + w_tot + wblk, lit_p + lit_used, take);
+            for (i = (uint32_t)0; i < take; i++) {
+                dst[w_tot + wblk + (size_t)i] = lit_p[lit_used + i];
+            }
         } else {
             for (i = (uint32_t)0; i < take; i++) {
                 uint8_t lb = (uint8_t)0;
@@ -2318,95 +2308,22 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
         }
         lit_used += (uint32_t)take;
         wblk += take;
-        /* (3) dist-resolve C14 before C13.
-         * R3-MIXDEC: inline dist_resolve + suffix_bits (mixed: 98.5%
-         * new-dist). Order mirrors both functions leg-for-leg: dist
-         * n-check, REPEAT/NULL/fetch, idx latch, sb0 skip, lane
-         * NULL/bounds, u64 window (same shift/mask value as the byte
-         * loop; guarded inside proven bytes, else the original call),
-         * lz_u3_dist. Every FAIL above is the same FAIL below. */
-        if (sel <= (uint32_t)3) {
-            d = recent[sel];
-        } else {
-            uint8_t dsym;
-            uint32_t didx;
-            uint32_t sb;
-            uint32_t slow3;
-            uint32_t suffix = (uint32_t)0;
-            if (dist_used >= dist_n) {
-                return LZ_U3_FAIL;
-            }
-            if (dist_mode == (uint32_t)1) {
-                dsym = dist_fill;
-            } else if (dist_p == NULL) {
-                return LZ_U3_FAIL;
-            } else {
-                dsym = dist_p[dist_used];
-            }
-            didx = dist_used;
-            dist_used += (uint32_t)1;
-            sb = (uint32_t)dsym >> 3;
-            slow3 = (uint32_t)dsym & (uint32_t)7;
-            if (sb != (uint32_t)0) {
-                uint32_t lk;
-                size_t spos;
-                size_t sbyte;
-                uint32_t ssh;
-                if (lanes == NULL) {
-                    return LZ_U3_FAIL;
-                }
-                lk = didx & (uint32_t)7;
-                if (lane_p[lk] == NULL) {
-                    return LZ_U3_FAIL;
-                }
-                spos = lanes->l[lk].bitpos;
-                if (spos + (size_t)sb > lane_cbits[lk]) {
-                    return LZ_U3_FAIL;
-                }
-                sbyte = spos >> 3;
-                ssh = (uint32_t)(spos & (size_t)7);
-                if (sbyte + (size_t)8 <= lane_cby[lk]) {
-                    uint64_t w64 = lz_u3_mc_ld64(lane_p[lk] + sbyte);
-                    suffix = (uint32_t)(w64 >> ssh) &
-                        (((uint32_t)1 << sb) - (uint32_t)1);
-                    lanes->l[lk].bitpos = spos + (size_t)sb;
-                } else if (lz_u3_suffix_bits(&lanes->l[lk], sb,
-                                             &suffix) != LZ_U3_OK) {
-                    return LZ_U3_FAIL;
-                }
-            }
-            d = lz_u3_dist(sb, slow3, suffix);
+        /* (3) dist-resolve C14 before C13. */
+        if (lz_u2_c14_ok(lz_u3_dist_resolve(sel, recent, &ss[3], &dist_used,
+                                            lanes, &d)) != LZ_U2_OK) {
+            return LZ_U3_FAIL;
         }
         /* (4) C13 post-literal strict on resolved d. */
         if (lz_u2_c13_ok(d, w_tot + wblk) != LZ_U2_OK) {
             return LZ_U3_FAIL;
         }
-        /* (5) match-len decode C16 before match copy.
-         * R3-MIXDEC: inline short leg (lshort verbatim from match_len;
-         * lshort<=31 so the wrap/overflow legs are vacuous). */
-        if (sel <= (uint32_t)3) {
-            ml_short = len_f;
-            ml_esc = (uint32_t)7;
-        } else {
-            ml_short = (((sel - (uint32_t)4) << 3) | len_f) & (uint32_t)31;
-            ml_esc = (uint32_t)31;
-        }
-        if (ml_short != ml_esc) {
-            mlen = ml_short + (uint32_t)2;
-            lok = LZ_U3_OK;
-        } else {
-            lok = lz_u3_match_len(sel, len_f, &ss[1], &len_used, &mlen);
-        }
+        /* (5) match-len decode C16 before match copy. */
+        lok = lz_u3_match_len(sel, len_f, &ss[1], &len_used, &mlen);
         if (lz_u2_c16_ok(lok) != LZ_U2_OK) {
             return LZ_U3_FAIL;
         }
-        /* (6) match-copy with term-clamp to ds.
-         * R3-MIXDEC: match_take inline (wblk<=ds proven above, so
-         * min(mlen,ds-wblk) is the function verbatim). */
-        take = (size_t)mlen;
-        if (take > (size_t)ds - wblk) {
-            take = (size_t)ds - wblk;
-        }
+        /* (6) match-copy with term-clamp to ds. */
+        take = lz_u2_match_take(wblk, (size_t)ds, (size_t)mlen);
         if (wblk >= room) {
             *out_n = room;
             *cap_hit = 1;
@@ -2419,14 +2336,7 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
             *cap_hit = 1;
             return LZ_U3_OK;
         }
-        /* R3-MIXDEC: d>=take short-circuits the call (same memcpy as
-         * the match_copy fast path; C13 above gives d>=1, d<=w). */
-        if (take != (size_t)0 && (size_t)d >= take) {
-            memcpy(dst + w_tot + wblk, dst + w_tot + wblk - (size_t)d,
-                   take);
-        } else {
-            lz_u3_match_copy(dst, w_tot + wblk, d, take);
-        }
+        lz_u3_match_copy(dst, w_tot + wblk, d, take);
         wblk += take;
         /* u6i DEC-MTF (R-E-B8 DEDUP): rep sel<=3 moves slot to front
          * (rep0 no-op); only new-dist sel>=4 inserts d at front. */
