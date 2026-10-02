@@ -21,6 +21,11 @@
 #   BENCH_NOPIN=1           skip taskpolicy even when present
 #   BENCH_FORCE=1           run despite gate trip (override, loudly logged;
 #                           for schema/CI smoke only — never a measurement)
+#   BENCH_WARMUP=1          --ab mode only: one discarded base+new pair
+#                           BEFORE run 1 (same A/B shape), WARMUP lines in
+#                           GATE.log (R10+ protocol; precedent R4/R5/R9
+#                           early-outlier x3). Single mode: no warmup here
+#                           (matrix_gated.sh runs its own full pass).
 #
 # outputs under <outdir> (single mode):
 #   run<N>.tsv   bench TSV rows with `#` provenance header (see below)
@@ -149,6 +154,17 @@ GATELOG="$OUT/GATE.log"
 export GATELOG
 : > "$GATELOG"
 log "gated-bench start mode=$([ "$AB" = 1 ] && echo AB-interleaved || echo single) runs=$RUNS reps=$REPS levels=${LEVELS:-all} ncpu=$NCPU pin=$PIN base=$BASEBIN new=${NEWBIN:-} force=${BENCH_FORCE:-0} fakeload=${BENCH_FAKE_LOAD:-none}"
+
+if [ "$AB" = 1 ] && [ "${BENCH_WARMUP:-1}" != "0" ]; then
+	mkdir -p "$OUT/warmup-bbase" "$OUT/warmup-bnew"
+	log "WARMUP start mode=AB-interleaved base+new pair (discarded)"
+	GATELOG="$OUT/GATE.log" one_run "$OUT/warmup-bbase" "$BASEBIN" "W0" "$RUNS" "$REPS" "$LEVELS" "$PIN" "$NCPU" -- "$@" || exit $?
+	log "WARMUP base rc=0 (discarded)"
+	GATELOG="$OUT/GATE.log" one_run "$OUT/warmup-bnew" "$NEWBIN" "W0" "$RUNS" "$REPS" "$LEVELS" "$PIN" "$NCPU" -- "$@" || exit $?
+	log "WARMUP new rc=0 (discarded)"
+	rm -rf "$OUT/warmup-bbase" "$OUT/warmup-bnew"
+	log "WARMUP done (discarded)"
+fi
 
 i=1
 while [ "$i" -le "$RUNS" ]; do

@@ -21,6 +21,7 @@
 #   MATRIX_COOLDOWN_SECS=20   sleep between outer runs (60 on Air)
 #   BENCH_MAXLOAD_MULT=2 BENCH_NOPIN="" BENCH_FORCE="" BENCH_FAKE_LOAD=""
 #     (passed through to run_gated.sh; FORCE = schema smoke, never quoted)
+#   MATRIX_WARMUP=1  one discarded full pass before run 1 (0 = off, never quoted)
 #   ORACLE_LIB  passed through to abench/encdump (default: system lib)
 #
 # outputs under <outdir>:
@@ -31,6 +32,13 @@
 #   raw/run<N>/<file>/L<lv>/<side>/run1.tsv  per-cell gated TSVs (audit trail)
 #   MATRIX.log  per-run rows/bytes/pin + VOID flags
 #   GATE.log    concatenated run_gated.sh gate logs (per cell-side)
+#
+# WARMUP (R10+ gate protocol, pre-registered LANE-R10-MATRIX): one full
+# discarded pass BEFORE run 1 — same A/B shape (every file x level x both
+# sides through run_gated.sh), output to raw-warmup/, rm'd after. Logged
+# as WARMUP lines in MATRIX.log + GATE.log. Precedent: R4/R5-run2 +
+# R9-run1 early-outlier (3 occurrences: union tL1 +17.8 OV suspect-opt
+# run1 with 43.47 cold floor). MATRIX_WARMUP=0 disables (never quoted).
 #
 #-corpus size pins (refuse on mismatch for known basenames):
 #   text-256k.bin=262144 mixed-128k.bin=131072 zeros-64k.bin=65536
@@ -119,6 +127,32 @@ log "matrix start runs=$RUNS reps=$REPS levels=$LEVELS ncpu=$NCPU box=$BOX sha=$
 log "matrix bins port=$PORTBIN apple=$APPLEBIN encdump=$ENCDUMP oracle_lib=${ORACLE_LIB:-default}"
 
 LVLIST=$(printf '%s' "$LEVELS" | sed 's/./& /g')
+
+if [ "${MATRIX_WARMUP:-1}" != "0" ]; then
+	log "WARMUP start (discarded; same A/B shape: every file x level x both sides)"
+	for f in "$@"; do
+		lbl=$(basename "$f")
+		for lv in $LVLIST; do
+			for side in port apple; do
+				case "$side" in
+					port) BIN=$PORTBIN ;;
+					*) BIN=$APPLEBIN ;;
+				esac
+				CELLD="$OUT/raw-warmup/$lbl/L$lv/$side"
+				BENCH_RUNS=1 BENCH_REPS=$REPS BENCH_LEVELS=$lv \
+					sh "$RUNGATED" "$CELLD" "$BIN" "$f" >>"$GATEAGG" 2>&1
+				rc=$?
+				echo "--- WARMUP $lbl L$lv $side rc=$rc" >>"$GATEAGG"
+				if [ $rc -ne 0 ]; then
+					log "WARMUP: $lbl L$lv $side rc=$rc (3=EGATED hot box); aborting"
+					exit $rc
+				fi
+			done
+		done
+	done
+	rm -rf "$OUT/raw-warmup"
+	log "WARMUP done (discarded)"
+fi
 
 i=1
 while [ "$i" -le "$RUNS" ]; do
