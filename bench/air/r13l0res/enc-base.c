@@ -8312,61 +8312,6 @@ static int lzmesh_u35_cert(const uint8_t *s, size_t n) {
  * (freq desc, sym desc) rank. Larger symbols take shorter lengths
  * among ties. Pure tie permute: counts per length, mfreq, data bits
  * unchanged; only straddling ties move (else exact no-op). */
-/* R13-L0RES-D1: stable LSD byte radix by u32 key (ASC), 1-4 passes
- * from key-OR (L0/g1 freqs < 2^16: always 2 passes). Same P13-RANK
- * proof: (key, distinct-sym) initial order is a strict total order,
- * stable radix emits that unique permutation, identical to the
- * insertion/msort it replaces. list/tmp hold n entries (n<=256).
- * Caller gates small n (pass overhead loses under ~64). */
-static void lzmesh_u35_radix_idx(const uint32_t *key, uint16_t *list,
-    uint16_t *tmp, unsigned n)
-{
-    uint16_t *a = list;
-    uint16_t *b = tmp;
-    unsigned cnt[256];
-    unsigned i, p, passes;
-    uint32_t orv = 0u;
-    unsigned shift;
-    for (i = 0u; i < n; i++)
-        orv |= key[list[i]];
-    if (orv == 0u)
-        return; /* all keys equal: initial order already sorted */
-    passes = 1u;
-    if (orv > 0xFFu)
-        passes = 2u;
-    if (orv > 0xFFFFu)
-        passes = 3u;
-    if (orv > 0xFFFFFFu)
-        passes = 4u;
-    shift = 0u;
-    for (p = 0u; p < passes; p++) {
-        unsigned pos[256];
-        unsigned acc = 0u;
-        for (i = 0u; i < 256u; i++)
-            cnt[i] = 0u;
-        for (i = 0u; i < n; i++)
-            cnt[(key[a[i]] >> shift) & 0xFFu]++;
-        for (i = 0u; i < 256u; i++) {
-            pos[i] = acc;
-            acc += cnt[i];
-        }
-        for (i = 0u; i < n; i++) {
-            unsigned k = (key[a[i]] >> shift) & 0xFFu;
-            b[pos[k]++] = a[i];
-        }
-        {
-            uint16_t *t = a;
-            a = b;
-            b = t;
-        }
-        shift += 8u;
-    }
-    if (a != list) {
-        for (i = 0u; i < n; i++)
-            list[i] = a[i];
-    }
-}
-
 /* P13-RANK: bottom-up merge sort by (freq desc, sym desc), same
  * pattern as lzmesh_pack1_pm_msort. Output is identical to the
  * insertion sort it replaces: (freq, sym) with distinct syms is a
@@ -8438,22 +8383,7 @@ static void lzmesh_u35_rank_assign(const uint32_t *freq, uint8_t *lens) {
         return;
     { /* P13-RANK: msort == insertion output (total order, unique). */
         uint16_t rtmp[256];
-        /* R13-L0RES-D1: radix above gate (identical total order:
-         * ~freq ASC == freq DESC, sym-DESC init keeps DESC ties). */
-        if (n >= 64u) {
-            uint32_t nfreq[256];
-            unsigned r;
-            for (r = 0u; r < 256u; r++)
-                nfreq[r] = ~freq[r];
-            for (r = 0u; r < n / 2u; r++) {
-                uint16_t t = order[r];
-                order[r] = order[n - 1u - r];
-                order[n - 1u - r] = t;
-            }
-            lzmesh_u35_radix_idx(nfreq, order, rtmp, n);
-        } else {
-            lzmesh_u35_rank_msort(freq, order, rtmp, n);
-        }
+        lzmesh_u35_rank_msort(freq, order, rtmp, n);
     }
     for (L = 1u; L <= 10u; L++) {
         unsigned c;
@@ -8745,10 +8675,6 @@ static int lzmesh_u35_tryq(const uint8_t *s, size_t n, const uint32_t *freq,
             fbits += (uint64_t)freq[f] * (uint64_t)lens[f];
         if (65u + mbits + fbits >= (uint64_t)8u * (uint64_t)n)
             return 0;
-        /* R13-L0RES-D2b: V2c's fbits == V2d's dbits bit-for-bit (same
-         * freq-weighted sum, R12-proven comment above); keep-path
-         * reuses it, V2d drops its accumulation (lanes only). */
-        dbits = fbits;
     }
     { /* R2-STORE V2d: x8 lane unroll + single lens lookup per byte
        * (the two lens[s[i]] reads are one value; dbits sum commutes). */
@@ -8771,10 +8697,12 @@ static int lzmesh_u35_tryq(const uint8_t *s, size_t n, const uint32_t *freq,
             bitc[5] += L5;
             bitc[6] += L6;
             bitc[7] += L7;
+            dbits += (uint64_t)(L0 + L1 + L2 + L3 + L4 + L5 + L6 + L7);
         }
         for (i = m8; i < n8; i++) {
             L0 = lens[s[i]];
             bitc[i & 7u] += L0;
+            dbits += L0;
         }
     }
     for (k = 0u; k < 8u; k++) {
@@ -15178,7 +15106,7 @@ static int lzmesh_s3_huff_ord(const uint32_t *freq, unsigned nsym,
 {
     /* nodes: 0..nsym-1 leaves (sym order), nsym.. overflow guard. */
     uint32_t fw[512];
-    uint16_t q1[256], q2[256], q1t[256];
+    uint16_t q1[256], q2[256];
     unsigned p1, p2, n1, n2, i, nn = 0u;
     uint16_t par[512];
     uint16_t chl[512], chr[512];
@@ -15210,20 +15138,14 @@ static int lzmesh_s3_huff_ord(const uint32_t *freq, unsigned nsym,
     if (n1 < 2u)
         return 0;
     /* stable insertion sort by freq (base order already sym ASC). */
-    /* R13-L0RES-D1: radix above gate (identical total order: stable
-     * ASC keeps collected-order ties, same as insertion). */
-    if (n1 >= 64u) {
-        lzmesh_u35_radix_idx(freq, q1, q1t, n1);
-    } else {
-        for (i = 1u; i < n1; i++) {
-            uint16_t x = q1[i];
-            unsigned j = i;
-            while (j > 0u && freq[x] < freq[q1[j - 1u]]) {
-                q1[j] = q1[j - 1u];
-                j--;
-            }
-            q1[j] = x;
+    for (i = 1u; i < n1; i++) {
+        uint16_t x = q1[i];
+        unsigned j = i;
+        while (j > 0u && freq[x] < freq[q1[j - 1u]]) {
+            q1[j] = q1[j - 1u];
+            j--;
         }
+        q1[j] = x;
     }
     for (i = 0u; i < 512u; i++) {
         fw[i] = 0u;
