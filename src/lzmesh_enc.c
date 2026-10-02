@@ -593,14 +593,13 @@ unsigned lzmesh_u3_bitlen(uint32_t v) {
  * max(sb)=2^(sb+4)-8; min(sb)=2^(sb+3)-7. d==0 -> 0 (no dist). */
 unsigned lzmesh_u3_sb_of(uint32_t d) {
     /* P11-WINS: closed form (was sb=1..28 scan). d<=mx(sb)=2^(sb+4)-8
-     * iff sb+4 >= ceil(log2(d+8)) = bitlen(d+7); u64 avoids d+7 wrap. */
-    uint64_t x;
-    unsigned sb;
-    if (d <= 8u)
-        return 0u;
-    x = (uint64_t)d + 7u; /* >=16: clz defined */
-    sb = 64u - (unsigned)__builtin_clzll(x) - 4u;
-    return sb <= 28u ? sb : 28u;
+     * iff sb+4 >= ceil(log2(d+8)) = bitlen(d+7); u64 avoids d+7 wrap.
+     * R8-L9NEW R-f: branchless (d=1..8 already yield 0 via clz;
+     * d==0 masked; cap+mask compile to csel). */
+    uint64_t x = (uint64_t)d + 7u; /* >=7: clzll defined */
+    unsigned sb = 64u - (unsigned)__builtin_clzll(x) - 4u;
+    sb = sb <= 28u ? sb : 28u;
+    return (d == 0u) ? 0u : sb;
 }
 
 int64_t lzmesh_u3_score(uint32_t len, uint32_t dist, uint32_t extralits) {
@@ -4647,6 +4646,25 @@ int lzmesh_u27_layout(const uint8_t *src, size_t size, uint32_t *tokc,
         || modes == NULL || bo == NULL || fo == NULL
         || minLong == NULL)
         return 0;
+    /* R8-L9NEW C3: trailing-short pre-gate. The run-scan below
+     * returns 0 at its final iteration whenever the last run is
+     * short (is_last=1, r<RMIN); no earlier iteration can return
+     * 1 (the loop only returns 0 or continues). Both callers
+     * (want/emit) discard outs on 0, so declining here is exact.
+     * Text/mixed bench (tail run 1) skip the ~5-branches/byte
+     * full scan. */
+    {
+        size_t g = size - 1u;
+        uint8_t glast = src[g];
+        unsigned gr = 1u;
+        while (g > 0u && gr < LZMESH_U27_RMIN
+            && src[g - 1u] == glast) {
+            g--;
+            gr++;
+        }
+        if (gr < LZMESH_U27_RMIN)
+            return 0;
+    }
     tc = 0u;
     lc_lit = 0u;
     pend = 0u;
@@ -11143,6 +11161,13 @@ static void lzmesh_s2_mx_link(int32_t *head, int32_t *prev,
     }
 }
 
+/* R8-MIX1NEUTRAL try-1: mx_link_ng fwd-decl; body at EOF (E2 verbatim;
+ * stays always_inline: inlines into the out-of-line nowin helper). */
+static inline __attribute__((always_inline)) void
+lzmesh_s2_mx_link_ng(int32_t *head, int32_t *prev,
+                     const uint8_t *src, size_t size, size_t ins,
+                     unsigned hb);
+
 /* === N1 e05 take-loss split (owner: N1; LANE-N1) ===
  * Bedded black-box (tmp/n1/n1bedN.py, n1bedR2.py; e05+e01+e09):
  * rep takes are UNCAPPED (R2/R3/R4/R5 take to 200K all slots/levels;
@@ -11377,33 +11402,56 @@ lzmesh_u37_rep_best(const uint8_t *src, size_t size, size_t pos,
     return 0;
 }
 
+/* R8-L9NEW R-d: one rep probe (r0/r1 bodies below; first-hit-wins
+ * order kept by the caller sequence). */
+static inline __attribute__((always_inline)) int
+lzmesh_r8_rep_probe(const uint8_t *src, size_t size, size_t pos,
+                    uint64_t mf_w8, uint32_t r, uint32_t need,
+                    uint32_t *blen, uint32_t *bdist) {
+    uint32_t ln;
+    size_t qq;
+    if ((uint64_t)r - 1u >= (uint64_t)pos)
+        return 0;
+    qq = pos - (size_t)r;
+    if (!lzmesh_mf_head_eq_r0(mf_w8, src + qq, need))
+        return 0;
+    ln = lzmesh_u37_extend(src, size, pos, qq, need);
+    if (ln < LZMESH_U37_MINREP)
+        return 0;
+    *blen = ln;
+    *bdist = r;
+    return 1;
+}
+
 /* R5-QBR rep_best_r0: rep_best under non-relaxed elig (pos+9<=size,
  * caller-checked once in u37_best). Elig, need-gate (need<=4<9),
  * fused-select and head_eq fallback are provably dead (proofs in
  * head_eq_r0 note); r-fuse ((u64)r-1>=pos <=> r==0||r>pos) is exact
- * uint64 arithmetic incl. r==0 wrap. Extend/filter/returns verbatim. */
+ * uint64 arithmetic incl. r==0 wrap. Extend/filter/returns verbatim.
+ * R8-L9NEW R-d: unrolled x3 (nrep is 1/3 at all callers; need const
+ * per probe; residual loop keeps totality for nrep>3). */
 static inline __attribute__((always_inline)) int
 lzmesh_u37_rep_best_r0(const uint8_t *src, size_t size, size_t pos,
                                   const uint32_t recent[4], unsigned nrep,
                                   uint32_t *blen, uint32_t *bdist) {
     unsigned j;
     uint64_t mf_w8 = lzmesh_wl_ld64(src + pos);
-    for (j = 0u; j < nrep; j++) {
-        uint32_t r = recent[j];
-        uint32_t need = (j == 0u) ? 2u : 4u;
-        uint32_t ln;
-        size_t qq;
-        if ((uint64_t)r - 1u >= (uint64_t)pos)
-            continue;
-        qq = pos - (size_t)r;
-        if (!lzmesh_mf_head_eq_r0(mf_w8, src + qq, need))
-            continue;
-        ln = lzmesh_u37_extend(src, size, pos, qq, need);
-        if (ln < LZMESH_U37_MINREP)
-            continue;
-        *blen = ln;
-        *bdist = r;
+    if (nrep > 0u
+        && lzmesh_r8_rep_probe(src, size, pos, mf_w8, recent[0], 2u,
+                               blen, bdist))
         return 1;
+    if (nrep > 1u
+        && lzmesh_r8_rep_probe(src, size, pos, mf_w8, recent[1], 4u,
+                               blen, bdist))
+        return 1;
+    if (nrep > 2u
+        && lzmesh_r8_rep_probe(src, size, pos, mf_w8, recent[2], 4u,
+                               blen, bdist))
+        return 1;
+    for (j = 3u; j < nrep; j++) {
+        if (lzmesh_r8_rep_probe(src, size, pos, mf_w8, recent[j], 4u,
+                                blen, bdist))
+            return 1;
     }
     return 0;
 }
@@ -11845,24 +11893,18 @@ static inline __attribute__((always_inline)) int
 lzmesh_u37_rep_best_r1(const uint8_t *src, size_t size, size_t pp,
                                   const uint32_t recent[4], unsigned nrep,
                                   uint32_t *blen, uint32_t *bdist) {
+    /* R8-L9NEW R-d: single-probe fast path (nrep==1 at all callers;
+     * residual loop keeps totality). */
     unsigned j;
     uint64_t mf_w8 = lzmesh_wl_ld64(src + pp);
-    for (j = 0u; j < nrep; j++) {
-        uint32_t r = recent[j];
-        uint32_t need = (j == 0u) ? 2u : 4u;
-        uint32_t ln;
-        size_t qq;
-        if ((uint64_t)r - 1u >= (uint64_t)pp)
-            continue;
-        qq = pp - (size_t)r;
-        if (!lzmesh_mf_head_eq_r0(mf_w8, src + qq, need))
-            continue;
-        ln = lzmesh_u37_extend(src, size, pp, qq, need);
-        if (ln < LZMESH_U37_MINREP)
-            continue;
-        *blen = ln;
-        *bdist = r;
+    if (nrep > 0u
+        && lzmesh_r8_rep_probe(src, size, pp, mf_w8, recent[0], 2u,
+                               blen, bdist))
         return 1;
+    for (j = 1u; j < nrep; j++) {
+        if (lzmesh_r8_rep_probe(src, size, pp, mf_w8, recent[j], 4u,
+                                blen, bdist))
+            return 1;
     }
     return 0;
 }
@@ -11947,6 +11989,16 @@ lzmesh_u37_slot_best_r1(const uint8_t *src, size_t size, size_t pp,
  * hash (NEW): L1 S2 MX-slot chains, L5/L9 G6 hashed
  * single-slot cascade. *is_rep says rep (1) or new.
  * I3: last_m/last_end/last_rep thread the most recent take (L1 hide). */
+/* R8 try-2: l1_rep_r0 ELIDED (stock rep_best_r0 covers the L1 rep leg
+ * under stock order; unroll redundant). l1_mx_r0 fwd-decl; body EOF,
+ * always_inline (inlined into the u37_best site as in E2). */
+static inline __attribute__((always_inline)) int
+lzmesh_r6_l1_mx_r0(const uint8_t *src, size_t size, size_t pos,
+                   const int32_t *head, const int32_t *prev,
+                   unsigned hb, uint32_t *blen, uint32_t *bdist,
+                   size_t last_m, size_t last_end, int last_rep,
+                   uint32_t rep0);
+
 static int lzmesh_u37_best(const uint8_t *src, size_t size, size_t pos,
                            const int32_t *head, const int32_t *prev,
                            const uint32_t *big, const uint32_t *small,
@@ -11992,25 +12044,33 @@ static int lzmesh_u37_best(const uint8_t *src, size_t size, size_t pos,
         return 0;
     if (pos + 9u > size)
         return 0;
+    /* R8 try-2: STOCK order (rep_best first, all levels incl L1) so the
+     * L5 executed path matches base op-for-op (E2's level-first
+     * redispatch is the prime L5-mover suspect; try-1 priced bloat
+     * innocent: u37_parse -960B vs base yet L5 -1.3 OV). L1 rep leg =
+     * stock rep_best_r0 (nrep=1: j=0 only; result-identical to the
+     * elided l1_rep_r0 unroll, +2 loop branches/query; bytes prove).
+     * L1 mx leg = inlined l1_mx_r0 (noinline call cost try-1 L1
+     * +6.7->+4.1, unaffordable). */
     if (lzmesh_u37_rep_best_r0(src, size, pos, recent, nrep, blen,
                                bdist)) {
         *is_rep = 1;
         return 1;
     }
     if (level == 1) {
-        if (lzmesh_s2_mx_best(src, size, pos, head, prev, hb, blen,
-                              bdist, level, last_m, last_end, last_rep,
-                              recent[0], 0)) {
+        if (lzmesh_r6_l1_mx_r0(src, size, pos, head, prev, hb, blen,
+                               bdist, last_m, last_end, last_rep,
+                               recent[0])) {
             *is_rep = 0;
             return 1;
         }
-    } else {
-        if (lzmesh_u37_slot_best_r0(src, size, pos, big, small, hb,
-                                    blen, bdist, level, i5v,
-                                    ycon, ywin)) {
-            *is_rep = 0;
-            return 1;
-        }
+        return 0;
+    }
+    if (lzmesh_u37_slot_best_r0(src, size, pos, big, small, hb,
+                                blen, bdist, level, i5v,
+                                ycon, ywin)) {
+        *is_rep = 0;
+        return 1;
     }
     return 0;
 }
@@ -12103,12 +12163,13 @@ lzmesh_h1_store_visit(int32_t *head, int32_t *prev,
                                   const uint8_t *src, size_t size, size_t pos,
                                   unsigned hb, int level,
                                   unsigned char *stored) {
-    if (level == 1) { /* S2 MX link + S4 once-guard (mx_link bounds-checks) */
-        if (stored != NULL) {
-            if (stored[pos])
-                return;
-            stored[pos] = 1u;
-        }
+    /* R7-NOBITMAP: S4 guard+mark deleted on the L1 arm (visit + span +
+     * gap + nowin-span below). ANSWER-r6-mix1-1: nobitmap variant 0
+     * DIVs/14476 + bench 3/3 IDENT (g0=2072 re-links idempotent:
+     * re-insert lands the same chain). stored[] calloc kept (min
+     * churn); unread/unwritten on L1. */
+    (void)stored;
+    if (level == 1) { /* S2 MX link (mx_link bounds-checks) */
         lzmesh_s2_mx_link(head, prev, src, size, pos, hb);
     } else {
         lzmesh_u37_g6_store(big, small, src, size, pos, hb);
@@ -12123,6 +12184,11 @@ lzmesh_h1_store_visit(int32_t *head, int32_t *prev,
  * from span_lo (m+1 when m direct-stored, m on challenger-win peek),
  * then gap backward (unvisited windowed-i only). vis = caller-owned
  * size bytes; marks visits in [ins, m). */
+/* R8-MIX1NEUTRAL try-1: L1-nowin span loops out-of-line (body EOF). */
+static __attribute__((noinline)) void
+lzmesh_h1_l1_nowin(int32_t *head, int32_t *prev,
+                   const uint8_t *src, size_t size, size_t span_lo,
+                   size_t end, unsigned hb);
 static void lzmesh_h1_catchup(int32_t *head, int32_t *prev,
                               uint32_t *big, uint32_t *small,
                               unsigned char *vis,
@@ -12133,6 +12199,20 @@ static void lzmesh_h1_catchup(int32_t *head, int32_t *prev,
     size_t v = ins, i, nextv;
     unsigned w = (level == 1) ? LZMESH_H1_WIN_L1 : LZMESH_H1_WIN_GEN;
     size_t k;
+    /* R6-MIX1 L1-nowin fast path: span only. The vis prologue is
+     * unread when the gap walk is skipped (stock NOWIN return below);
+     * vis is caller scratch no L1 path reads (i4/k2 windows are
+     * L5-only). stored!=NULL proven (sole caller passes parse L1
+     * calloc-checked). Guard-hoist: end+8<=size proves every span
+     * guard, else the stock loop.
+     * R8-MIX1NEUTRAL try-1: loops out-of-line in lzmesh_h1_l1_nowin
+     * (noinline, EOF) so u37_parse keeps near-base shape; the two
+     * loops are L1-only dead bytes at L5/L9. One predicted call per
+     * L1-nowin catchup. */
+    if (level == 1 && lzmesh_wstore_nowin()) {
+        lzmesh_h1_l1_nowin(head, prev, src, size, span_lo, end, hb);
+        return;
+    }
     /* P17-FINDER win256: gap<=256 visits every pos (step is 1 while
      * (v-ins)<256), so the walk takes no else-leg and vis[] is pure
      * scratch: skip clear+mark+walk. Fails open (m<ins underflows to
@@ -12146,13 +12226,15 @@ static void lzmesh_h1_catchup(int32_t *head, int32_t *prev,
             v += (size_t)1u + ((v - ins) >> 8);
         }
     }
+    /* R8 try-3: DEHOISTED to stock loop shape (per-iter level check;
+     * the hoisted L5 loop body is the remaining L5-mover suspect after
+     * try-1 priced bloat innocent and try-2 tests dispatch order).
+     * L1-neutral: these loops are dead at L1-nowin-default (fast path
+     * above returns; gcov taken IDENTICAL to try-2). R7-NOBITMAP L1
+     * guard+mark deletion KEPT (prize, proof at visit site). */
+    (void)stored;
     for (i = span_lo; i < end; i++) {
-        if (level == 1) { /* S2 MX link + S4 once-guard */
-            if (stored != NULL) {
-                if (stored[i])
-                    continue;
-                stored[i] = 1u;
-            }
+        if (level == 1) { /* S2 MX link */
             lzmesh_s2_mx_link(head, prev, src, size, i, hb);
         } else {
             lzmesh_u37_g6_store(big, small, src, size, i, hb);
@@ -12165,17 +12247,13 @@ static void lzmesh_h1_catchup(int32_t *head, int32_t *prev,
         return;
     if (!win256) /* P17-FINDER win256: no else-leg fires (see above) */
         return;
+    /* R8 try-3: DEHOISTED to stock loop shape (D1 deletion kept). */
     for (i = m; i > ins;) {
         --i;
         if (vis[i])
             nextv = i;
         else if (nextv - i <= (size_t)(w - 1u)) {
-            if (level == 1) { /* S2 MX link + S4 once-guard */
-                if (stored != NULL) {
-                    if (stored[i])
-                        continue;
-                    stored[i] = 1u;
-                }
+            if (level == 1) { /* S2 MX link */
                 lzmesh_s2_mx_link(head, prev, src, size, i, hb);
             } else {
                 lzmesh_u37_g6_store_big(big, src, size, i, hb);
@@ -12585,16 +12663,17 @@ lzmesh_i5_direct(uint32_t *big, uint32_t *small,
     /* R6-T9: fast path (pos+8<=size, trace off): size gates + trace
      * gates provably dead; stores verbatim. Tail/trace run stock. */
     if (!md->ho_trh && pos + 8u <= size) {
-        uint32_t s3 = lzmesh_u2_h3(
-            (uint32_t)lzmesh_u2_load_n(src + pos, 3u));
-        uint32_t s = lzmesh_u2_h2(lzmesh_u2_load_n(src + pos, 5u), hb);
+        /* R8-L9NEW C2: one u64 feeds h3/h2/h1 (P11 pattern;
+         * pos+8<=size proves the 8B read in-bounds).
+         * R8-L9NEW R-e: branchless h1 leg (csel slot: h1==0
+         * re-stores big[s]=pos idempotently; same value). */
+        uint64_t w8 = lzmesh_wl_ld64(src + pos);
+        uint32_t s3 = lzmesh_u2_h3((uint32_t)(w8 & 0xFFFFFFu));
+        uint32_t s = lzmesh_u2_h2(w8 & 0xFFFFFFFFFFull, hb);
+        uint32_t s1 = lzmesh_u2_h1(w8 & 0xFFFFFFFFFFFFFFull, hb);
         small[s3] = (uint32_t)pos;
         big[s] = (uint32_t)pos;
-        if (md->h1) {
-            uint32_t s1 =
-                lzmesh_u2_h1(lzmesh_u2_load_n(src + pos, 7u), hb);
-            big[s1] = (uint32_t)pos;
-        }
+        big[md->h1 ? s1 : s] = (uint32_t)pos;
         return;
     }
     if (pos + 3u <= size) {
@@ -12717,7 +12796,18 @@ lzmesh_i5_span(uint32_t *big, uint32_t *small,
         }
         return;
     }
-    {
+    /* R7-IRA span razor on the R6-T9 clean arm (mix9 862c9eb52 carried
+     * onto shipped text9; trace arm above stays T9-verbatim, never
+     * re-collided). Cold (run=1) runs the T9 gm main/tail verbatim;
+     * hot (run=0, default) drops the run check and versions the main
+     * on h1, with e7/e5/e3 tail ranges. Exact: run/trh/h1 are
+     * parse-start snapshots (P5-HOIST), loop-invariant; e7 == T9 gm
+     * (same min(end,size-6)/edge formula); e7<=e5<=e3 partition by
+     * which bounds hold (i+7<=size => i+5,i+3 hold; mid/tail
+     * i>=size-7 kills the h1 leg incl its flag check); per-i leg
+     * order (h3,h2,h1), hashes and stores verbatim; [e3,end) is a
+     * no-op in T9 (all bounds fail, run check false). */
+    if (qbr_run) {
         size_t gm = end;
         /* Main/tail split: i+7<=size for all i<gm (i.e. gm<=size-6
          * when size>=7; size<7 runs all-tail). gm clamps to
@@ -12732,17 +12822,21 @@ lzmesh_i5_span(uint32_t *big, uint32_t *small,
         if (gm < span_lo)
             gm = span_lo;
         for (i = span_lo; i < gm; i++) {
+            /* R8-L9NEW C2: one u64 feeds h3/h2/h1 (P11 query-side
+             * pattern; LE low bytes equal load_n bit-for-bit;
+             * i+7<=size proven by gm, so the 8B read is in-bounds). */
+            uint64_t w8;
             uint32_t s, s3;
             if (qbr_run && lzmesh_i5_isrun(src, size, i))
                 continue;
-            s3 = lzmesh_u2_h3(
-                (uint32_t)lzmesh_u2_load_n(src + i, 3u));
-            s = lzmesh_u2_h2(lzmesh_u2_load_n(src + i, 5u), hb);
+            w8 = lzmesh_wl_ld64(src + i);
+            s3 = lzmesh_u2_h3((uint32_t)(w8 & 0xFFFFFFu));
+            s = lzmesh_u2_h2(w8 & 0xFFFFFFFFFFull, hb);
             small[s3] = (uint32_t)i;
             big[s] = (uint32_t)i;
             if (md->h1) {
                 uint32_t s1 =
-                    lzmesh_u2_h1(lzmesh_u2_load_n(src + i, 7u), hb);
+                    lzmesh_u2_h1(w8 & 0xFFFFFFFFFFFFFFull, hb);
                 big[s1] = (uint32_t)i;
             }
         }
@@ -12764,6 +12858,62 @@ lzmesh_i5_span(uint32_t *big, uint32_t *small,
                     big[s1] = (uint32_t)i;
                 }
             }
+        }
+    } else {
+        /* Exclusive ends: i+3<=size <=> i<size-2 (size>=3); tiny
+         * sizes default to span_lo (no i qualifies; no underflow;
+         * each size-N term short-circuits before size-(N-1)). */
+        size_t e3 = (size >= 3u && end > size - 2u) ? size - 2u : end;
+        size_t e5 = (size >= 5u && end > size - 4u) ? size - 4u : end;
+        size_t e7 = (size >= 7u && end > size - 6u) ? size - 6u : end;
+        if (size < 3u)
+            e3 = span_lo;
+        if (size < 5u)
+            e5 = span_lo;
+        if (size < 7u)
+            e7 = span_lo;
+        i = span_lo;
+        if (e7 < span_lo)
+            e7 = span_lo;
+        if (e5 < e7)
+            e5 = e7;
+        if (e3 < e5)
+            e3 = e5;
+        /* R8-L9NEW C2: one u64 feeds h3/h2/h1 in the mains below
+         * (P11 pattern; i+7<=size proven by e7). Tails keep stock
+         * load_n (8B read unsafe there; <=4 iters each). */
+        if (md->h1) {
+            for (; i < e7; i++) {
+                uint64_t w8 = lzmesh_wl_ld64(src + i);
+                uint32_t s = lzmesh_u2_h3(
+                    (uint32_t)(w8 & 0xFFFFFFu));
+                small[s] = (uint32_t)i;
+                s = lzmesh_u2_h2(w8 & 0xFFFFFFFFFFull, hb);
+                big[s] = (uint32_t)i;
+                s = lzmesh_u2_h1(w8 & 0xFFFFFFFFFFFFFFull, hb);
+                big[s] = (uint32_t)i;
+            }
+        } else {
+            for (; i < e7; i++) {
+                uint64_t w8 = lzmesh_wl_ld64(src + i);
+                uint32_t s = lzmesh_u2_h3(
+                    (uint32_t)(w8 & 0xFFFFFFu));
+                small[s] = (uint32_t)i;
+                s = lzmesh_u2_h2(w8 & 0xFFFFFFFFFFull, hb);
+                big[s] = (uint32_t)i;
+            }
+        }
+        for (; i < e5; i++) {
+            uint32_t s = lzmesh_u2_h3(
+                (uint32_t)lzmesh_u2_load_n(src + i, 3u));
+            small[s] = (uint32_t)i;
+            s = lzmesh_u2_h2(lzmesh_u2_load_n(src + i, 5u), hb);
+            big[s] = (uint32_t)i;
+        }
+        for (; i < e3; i++) {
+            uint32_t s = lzmesh_u2_h3(
+                (uint32_t)lzmesh_u2_load_n(src + i, 3u));
+            small[s] = (uint32_t)i;
         }
     }
 }
@@ -12814,55 +12964,111 @@ static size_t lzmesh_i5_flood(uint32_t *big, uint32_t *small,
         }
         return ins;
     }
+    /* R7-IRA flood razor on the R6-T9 clean arm (mix9 862c9eb52 carried
+     * onto shipped text9; trace arm above stays T9-verbatim, never
+     * re-collided). Hot loops version the main on h1 and split the
+     * tail into e7/e5/e3 ranges. Exact: h1/trh are parse-start
+     * snapshots (P5-HOIST), loop-invariant; e7 == T9 gm; ranges
+     * partition by which bounds hold (mid/tail i>=size-7 kills the
+     * h1 leg incl its flag check); per-i leg order (h3,h2,h1),
+     * pos0 guards, hashes and stores verbatim; [e3,ins) is a no-op
+     * in T9 (all bounds fail).
+     * R8-L9NEW C1: pos0-guard hoist. The per-pos `slot[x] != 0u`
+     * guards become one per-call snapshot + conditional restore.
+     * Exact: (a) value 0 in L9 big/small is written ONLY by the
+     * parse-top pos0-direct (all other L9 writers store i/pos/m/pm
+     * >= 1: loop pos starts 1 and J4 backs to >= ins >= 1; span_lo
+     * = m|m+1 >= 1; fup >= 1; skipback >= pos+1), so a slot holds
+     * 0 at flood entry iff it is a never-overwritten pos0 slot.
+     * (b) A 0-at-entry slot stays 0 under the guarded loop (every
+     * would-be write to it is skipped; later writes are >= 1 so
+     * no new 0 appears), and a nonzero-at-entry slot takes every
+     * write (guards never fire). So guarded-loop == unconditional
+     * loop + restore-0-to-entry-0-slots. (c) No query observes
+     * mid-flood tables (flood runs inside the !chave skip arm; the
+     * next query is a later loop iteration). (d) Snapshot
+     * conditions replicate the pos0-direct write conditions
+     * exactly (h3 iff 3<=size, h2 iff 5<=size, h1 iff h1&&7<=size),
+     * so every entry-0 slot is snapshotted; aliasing (s1==s2)
+     * restores the same value twice. Trace arm above untouched. */
     {
-        size_t gm = ins;
-        /* Main/tail split: i+7<=size for all i<gm (i.e. gm<=size-6
-         * when size>=7; size<7 runs all-tail). gm clamps to [fup,ins]. */
-        if (size >= 7u) {
-            size_t g = size - 6u;
-            if (gm > g)
-                gm = g;
-        } else {
-            gm = fup;
-        }
-        if (gm < fup)
-            gm = fup;
-        for (i = fup; i < gm; i++) {
-            uint32_t s3 = lzmesh_u2_h3(
-                (uint32_t)lzmesh_u2_load_n(src + i, 3u));
-            uint32_t s2 = lzmesh_u2_h2(lzmesh_u2_load_n(src + i, 5u),
-                                       hb);
-            if (small[s3] != 0u)
-                small[s3] = (uint32_t)i;
-            if (big[s2] != 0u)
-                big[s2] = (uint32_t)i;
-            if (md->h1) {
-                uint32_t s1 = lzmesh_u2_h1(
-                    lzmesh_u2_load_n(src + i, 7u), hb);
-                if (big[s1] != 0u)
-                    big[s1] = (uint32_t)i;
+        /* Exclusive ends: i+3<=size <=> i<size-2 (size>=3); tiny
+         * sizes default to fup (no i qualifies; no underflow). */
+        size_t e3 = (size >= 3u && ins > size - 2u) ? size - 2u : ins;
+        size_t e5 = (size >= 5u && ins > size - 4u) ? size - 4u : ins;
+        size_t e7 = (size >= 7u && ins > size - 6u) ? size - 6u : ins;
+        size_t i = fup;
+        uint32_t c1_s3 = 0u, c1_s2 = 0u, c1_s1 = 0u;
+        int c1_r3 = 0, c1_r2 = 0, c1_r1 = 0;
+        if (size < 3u)
+            e3 = fup;
+        if (size < 5u)
+            e5 = fup;
+        if (size < 7u)
+            e7 = fup;
+        if (e7 < fup)
+            e7 = fup;
+        if (e5 < e7)
+            e5 = e7;
+        if (e3 < e5)
+            e3 = e5;
+        if (ins > fup) {
+            if (3u <= size) {
+                c1_s3 = lzmesh_u2_h3(
+                    (uint32_t)lzmesh_u2_load_n(src, 3u));
+                c1_r3 = (small[c1_s3] == 0u);
+            }
+            if (5u <= size) {
+                c1_s2 = lzmesh_u2_h2(lzmesh_u2_load_n(src, 5u), hb);
+                c1_r2 = (big[c1_s2] == 0u);
+            }
+            if (md->h1 && 7u <= size) {
+                c1_s1 = lzmesh_u2_h1(lzmesh_u2_load_n(src, 7u), hb);
+                c1_r1 = (big[c1_s1] == 0u);
             }
         }
-        for (i = gm; i < ins; i++) {
-            if (i + 3u <= size) {
+        /* R8-L9NEW C2: one u64 feeds h3/h2/h1 in the mains below
+         * (P11 pattern; i+7<=size proven by e7). Tails keep stock
+         * load_n (8B read unsafe there; <=4 iters each). */
+        if (md->h1) {
+            for (; i < e7; i++) {
+                uint64_t w8 = lzmesh_wl_ld64(src + i);
                 uint32_t s = lzmesh_u2_h3(
-                    (uint32_t)lzmesh_u2_load_n(src + i, 3u));
-                if (small[s] != 0u)
-                    small[s] = (uint32_t)i;
+                    (uint32_t)(w8 & 0xFFFFFFu));
+                small[s] = (uint32_t)i;
+                s = lzmesh_u2_h2(w8 & 0xFFFFFFFFFFull, hb);
+                big[s] = (uint32_t)i;
+                s = lzmesh_u2_h1(w8 & 0xFFFFFFFFFFFFFFull, hb);
+                big[s] = (uint32_t)i;
             }
-            if (i + 5u <= size) {
-                uint32_t s = lzmesh_u2_h2(lzmesh_u2_load_n(src + i, 5u),
-                                          hb);
-                if (big[s] != 0u)
-                    big[s] = (uint32_t)i;
-            }
-            if (md->h1 && i + 7u <= size) {
-                uint32_t s = lzmesh_u2_h1(lzmesh_u2_load_n(src + i, 7u),
-                                          hb);
-                if (big[s] != 0u)
-                    big[s] = (uint32_t)i;
+        } else {
+            for (; i < e7; i++) {
+                uint64_t w8 = lzmesh_wl_ld64(src + i);
+                uint32_t s = lzmesh_u2_h3(
+                    (uint32_t)(w8 & 0xFFFFFFu));
+                small[s] = (uint32_t)i;
+                s = lzmesh_u2_h2(w8 & 0xFFFFFFFFFFull, hb);
+                big[s] = (uint32_t)i;
             }
         }
+        for (; i < e5; i++) {
+            uint32_t s = lzmesh_u2_h3(
+                (uint32_t)lzmesh_u2_load_n(src + i, 3u));
+            small[s] = (uint32_t)i;
+            s = lzmesh_u2_h2(lzmesh_u2_load_n(src + i, 5u), hb);
+            big[s] = (uint32_t)i;
+        }
+        for (; i < e3; i++) {
+            uint32_t s = lzmesh_u2_h3(
+                (uint32_t)lzmesh_u2_load_n(src + i, 3u));
+            small[s] = (uint32_t)i;
+        }
+        if (c1_r3)
+            small[c1_s3] = 0u;
+        if (c1_r2)
+            big[c1_s2] = 0u;
+        if (c1_r1)
+            big[c1_s1] = 0u;
     }
     return ins;
 }
@@ -13015,8 +13221,8 @@ static int lzmesh_t4_sb_win(uint32_t nlen, uint32_t ndist,
 }
 static int lzmesh_t4_hash_win(int level, uint32_t hlen, uint32_t hdist,
                               uint32_t clen, uint32_t cdist,
-                              uint32_t litrun, int64_t sc) {
-    if (level == 9 && lzmesh_t4_sbduel_on())
+                              uint32_t litrun, int64_t sc, int sbduel) {
+    if (level == 9 && sbduel)
         return lzmesh_t4_sb_win(hlen, hdist, clen, cdist);
     return lzmesh_u3_score(hlen, hdist, litrun + 1u) > sc;
 }
@@ -13352,6 +13558,9 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
     int r6_wj4 = lzmesh_wpins_l9j4_on();
     int r6_o4 = lzmesh_o4_on();
     int r6_u3k = lzmesh_u3_imm_k();
+    /* R8-L9NEW R-a/R-b: snapshot read-once trace/duel gates (T9 pattern). */
+    int r6_t4tr = lzmesh_t4_trace_on();
+    int r6_sbduel = lzmesh_t4_sbduel_on();
     unsigned j;
     lzmesh_k2_q k2q; /* K2: T3 multi-pending FIFO (L5 only) */
     k2q.v = NULL;
@@ -13577,7 +13786,7 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
              * lazy duels (outcome-known gating). n2 rep_best is
              * table-free, so the move is query-neutral. */
             size_t f3_pp = pos + 1u;
-            if (lzmesh_t4_trace_on())
+            if (r6_t4tr)
                 fprintf(stderr,
                         "T4PEEK pos=%u cur=%u@%u r0=%d:%u@%u h=%d:%u@%u\n",
                         (unsigned)pos, clen, cdist, r0have, r0len,
@@ -13636,7 +13845,7 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
                 chal_win = 1;
             } else if (hhave
                 && lzmesh_t4_hash_win(level, hlen, hdist, clen,
-                                      cdist, litrun, sc)) {
+                                      cdist, litrun, sc, r6_sbduel)) {
                 litrun++;
                 globrun++; /* F1 */
                 pos++;
@@ -13794,7 +14003,7 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
             int rep = cis_rep;
             unsigned slot = 0u;
             /* T4-TRACE (LANE-T4): per-take parse path. */
-            if (lzmesh_t4_trace_on())
+            if (r6_t4tr)
                 fprintf(stderr,
                         "T4TAKE m=%u run=%u len=%u dist=%u isn=%d chw=%d pre=%d chwv=%d cisrep=%d q=%u\n",
                         (unsigned)pos, litrun, clen, cdist,
@@ -16312,6 +16521,7 @@ static size_t lzmesh_h3_split(lzmesh_u37_tok *toks, size_t n_real,
     uint32_t tokb = 0u, lenb = 0u;
     uint32_t *cost = NULL, *esc = NULL;
     int l1mid = 0; /* Y-E01QUAD: L1 mid-sea twin gate. */
+    int r8_mse59 = 0, r8_mse1 = 0; /* R8-L9NEW R-c (see below). */
     (void)gterm;
     (void)level; /* F1/V2: short-prospective now level-free (NEW-only). */
     if (toks == NULL || out == NULL || size < 4u)
@@ -16345,6 +16555,11 @@ static size_t lzmesh_h3_split(lzmesh_u37_tok *toks, size_t n_real,
      * model predicts oracle cuts 51/51 exact (427-cell mine, blk0+blk1);
      * seacut gated by remain>=43 (see LZMESH_YQUAD_L1REMAIN). */
     l1mid = (level == 1 && lzmesh_yquad_l1mid_on()) ? 1 : 0;
+    /* R8-L9NEW R-c: mid-sea gate hoist (f1mid/level/l1mid are settled
+     * above and loop-invariant; T9 snapshot pattern). r8_mse59/1
+     * declared with the locals at function top. */
+    r8_mse59 = (f1mid && (level == 5 || level == 9)) ? 1 : 0;
+    r8_mse1 = (l1mid && level == 1) ? 1 : 0;
     S = 1u;
     for (i = 0u; i < n_real; i++) {
         size_t pos_new;
@@ -16366,9 +16581,7 @@ static size_t lzmesh_h3_split(lzmesh_u37_tok *toks, size_t n_real,
          * take-end + V2 REP-join); L>=4 stays baseline (memo
          * long-exempt L>=9 join; L4-8 unbedded). */
         int litcut = 0;
-        if ((f1mid && (level == 5 || level == 9)
-                && toks[i].mlen <= 3u)
-            || (l1mid && level == 1)) {
+        if ((r8_mse59 && toks[i].mlen <= 3u) || r8_mse1) {
             int firstcut = 1;
             for (;;) {
                 uint32_t Bcur = lzmesh_u3_budget_for(blk);
@@ -19246,4 +19459,128 @@ size_t lzmesh_u38_emit(uint8_t *dst, size_t dst_capacity,
     lzmesh_u4_footer_emit(dst + fo, modes, tokc, lenc, litc, distc);
     dst[fo + 10u] = (uint8_t)LZMESH_U1_TAG_END;
     return need;
+}
+
+/* === R8-MIX1NEUTRAL EOF bodies (try-2: stock order + inline mx) ===
+ * l1_mx_r0 always_inline (inlined at the u37_best site, E2 shape);
+ * h1_l1_nowin noinline (out-of-line L1 span loops); mx_link_ng
+ * always_inline (inlines into the nowin helper). l1_rep_r0 elided
+ * (stock rep_best_r0 covers L1 under stock order). */
+
+/* R6-MIX1 mx_link_ng: mx_link minus the tail guard. Exact when the
+ * caller proves ins+8<=size (then the guard always passes and
+ * prev[ins] is in-bounds exactly as stock). */
+static inline __attribute__((always_inline)) void
+lzmesh_s2_mx_link_ng(int32_t *head, int32_t *prev,
+                     const uint8_t *src, size_t size, size_t ins,
+                     unsigned hb) {
+    uint32_t ms = lzmesh_s2_hx(
+        lzmesh_u2_load_n(src + ins, LZMESH_S2_MXLOAD), hb);
+    (void)size;
+    prev[ins] = head[ms];
+    head[ms] = (int32_t)ins;
+}
+
+/* R8 try-2: l1_rep_r0 body DELETED (elided; see fwd-decl note). */
+
+/* R7 l1_mx_r0: s2_mx_best under elig-once + build-proven tables.
+ * (R6-MIX1 mechanism, redispatched: QBR's u37_best L1 leg calls
+ * the r0 pair directly instead of a top-of-best fork, so L5/L9
+ * execute zero added branches.)
+ * Dropped as dead: elig call (caller-checked), MXLOAD guard
+ * (pos+8<=size via pos+9<=size), NULL/hb checks (build rejects
+ * hb==0||hb>21||head==NULL||prev==NULL before both parses).
+ * Walk/D3/extend/short/loss/K5/dbg verbatim; head verifies via r0
+ * (qq-side 8B proven per-link by the kept qq<pos guard).
+ * R7: heq via lzmesh_mf_head_eq_r0 (QBR, identical masked-xor). */
+static inline __attribute__((always_inline)) int
+lzmesh_r6_l1_mx_r0(const uint8_t *src, size_t size, size_t pos,
+                   const int32_t *head, const int32_t *prev,
+                   unsigned hb, uint32_t *blen, uint32_t *bdist,
+                   size_t last_m, size_t last_end, int last_rep,
+                   uint32_t rep0) {
+    int32_t q;
+    uint32_t k5_flen = 0u, k5_fdist = 0u;
+    int k5_have = 0;
+    int p11_dbg = lzmesh_wpins_s2dbg_at(pos);
+    int p11_hide = (pos == last_end);
+    /* R7-D2: w8 hoisted (loop-invariant pure load; no stores to src[]
+     * in the loop body, dbg fprintf receives values only). */
+    uint64_t w8 = lzmesh_wl_ld64(src + pos);
+    q = head[lzmesh_s2_hx(
+        lzmesh_u2_load_n(src + pos, LZMESH_S2_MXLOAD), hb)];
+    if (p11_dbg)
+        fprintf(stderr, "WPS2 pos=%u slotq=%d\n", (unsigned)pos,
+                (int)q);
+    while (q >= 0) { /* J1: uncapped (deep writers visible) */
+        size_t qq = (size_t)q;
+        uint32_t dist, ln;
+        if (qq >= pos || qq >= size)
+            break;
+        q = prev[qq];
+        if (p11_dbg)
+            fprintf(stderr, "WPS2  qq=%u heq=%d hid=%d\n",
+                    (unsigned)qq,
+                    lzmesh_u2_head_eq(src + pos, src + qq,
+                                      LZMESH_S2_MXHEAD),
+                    lzmesh_i3_l1_span_hide(1, pos, qq, last_m,
+                                           last_end, last_rep));
+        if (p11_hide
+            && lzmesh_i3_l1_span_hide(1, pos, qq, last_m,
+                                      last_end, last_rep)) {
+            /* I3 hidden: K5-remember first hidden-verifying->=7. */
+            if (!k5_have
+                && lzmesh_mf_head_eq_r0(w8, src + qq,
+                                        LZMESH_S2_MXHEAD)) {
+                dist = (uint32_t)(pos - qq);
+                ln = lzmesh_u37_extend(src, size, pos, qq,
+                                       LZMESH_S2_MXHEAD);
+                if (ln >= 7u && lzmesh_u37_loss_ok(ln, dist, 0)) {
+                    k5_flen = ln;
+                    k5_fdist = dist;
+                    k5_have = 1;
+                }
+            }
+            continue;
+        }
+        if (!lzmesh_mf_head_eq_r0(w8, src + qq, LZMESH_S2_MXHEAD))
+            return 0; /* D3 shadow: non-verifying blocks older */
+        dist = (uint32_t)(pos - qq);
+        ln = lzmesh_u37_extend(src, size, pos, qq, LZMESH_S2_MXHEAD);
+        /* R7-D2: short/loss legs deleted (dead: ANSWER-r6-mix1-1
+         * short=0 loss=0 over 6.57M queries; noshortloss variant 0
+         * DIVs/14476 + bench 3/3 IDENT). heq-verified extends are
+         * always >=6 and loss_ok here. */
+        *blen = ln;
+        *bdist = dist;
+        return 1;
+    }
+    /* K5: no visible->=6; fall back to hidden->=7 (NEW-last only;
+     * defer to rep@P+1, len>=2). */
+    if (k5_have && !last_rep) {
+        if (rep0 >= 1u && rep0 <= pos + 1u && pos + 2u < size
+            && src[pos + 1u] == src[pos + 1u - rep0]
+            && src[pos + 2u] == src[pos + 2u - rep0])
+            return 0; /* K5: defer to rep@P+1 */
+        *blen = k5_flen;
+        *bdist = k5_fdist;
+        return 1;
+    }
+    return 0;
+}
+
+/* R8-MIX1NEUTRAL try-1: L1-nowin span loops, out-of-line (E2 code
+ * verbatim: guard-hoist picks ng vs stock loop). */
+static __attribute__((noinline)) void
+lzmesh_h1_l1_nowin(int32_t *head, int32_t *prev,
+                   const uint8_t *src, size_t size, size_t span_lo,
+                   size_t end, unsigned hb) {
+    size_t i;
+    if (end + 8u <= size) {
+        for (i = span_lo; i < end; i++)
+            lzmesh_s2_mx_link_ng(head, prev, src, size, i, hb);
+    } else {
+        for (i = span_lo; i < end; i++)
+            lzmesh_s2_mx_link(head, prev, src, size, i, hb);
+    }
 }

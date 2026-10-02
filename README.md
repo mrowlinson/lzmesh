@@ -51,10 +51,11 @@ The 5 are byte-identical before and after the gating merge
 
 Throughput in MiB/s, medians over n=70 (10 gated runs × 7 reps,
 interleaved port-vs-Apple, same box back-to-back), MacBookAir M1,
-Apple clang 21 `-O2 -std=c11`, R7 fold on the R6-ship tree
-(`port/src/lzmesh_enc.c` md5 ac44f320,
-`port/src/lzmesh_dec.c` md5 5fa2dea5; port/src byte-identical to
-the R6 SHIP c05555f30; tables + PGO below read THIS tree). Both
+Apple clang 21 `-O2 -std=c11`, R8-ship tree
+(`port/src/lzmesh_enc.c` md5 155d258a,
+`port/src/lzmesh_dec.c` md5 5fa2dea5; tables + PGO below still
+read the R7 matrix on the R6 SHIP — R8 absolutes refresh next
+matrix; R8 deltas in the paragraph below). Both
 sides in-process: port `bench/bench.c` vs Apple `bench/abench`
 (same harness, no fork+exec+pipe floor — R4's piped-Apple
 methodology is superseded; its tables are history below).
@@ -103,6 +104,22 @@ ranking, gaps −73.0/−74.0 — and PGO is re-measured below
 mixed L9 enc −74.0%, text L9 enc −73.0% (all SEPARATED Apple).
 Full R7 tables: `tmp/matrix-r7/RANKING.md`.
 
+R8 ships the union of l9new (IRA floor + C1 flood-guard hoist +
+C2 store load-fusion + C3 u27 tail-gate + R riders) and
+mix1neutral (E2 stock-order redispatch + D1; enc md5 155d258a):
+all 6 text/mixed enc cells SEPARATED (n=25 gated A/B base-vs-new,
+24/24 cells incl L0, 0 slower) — text L1 +9.7% (93.91→103.01),
+L5 +11.1% (86.09→95.68), L9 +25.9% (61.15→76.99); mixed L1
++15.8% (116.06→134.41), L5 +8.8% (107.67→117.15), L9 +25.2%
+(76.22→95.42). Gap-share vs R7 ranking: text L9 +6.94pp
+(−73.0→−66.0), mixed L9 +6.51pp (−74.0→−67.5), mixed L1 +4.01pp
+(−74.8→−70.8), text L5 +3.88pp, text L1 +2.74pp, mixed L5 +2.66pp.
+Mixed-L1 stacks superadditively (+15.8 vs +7.4/+7.1 solo);
+per-side prizes re-verified first-hand (L9s +25.2/+25.7 x2 runs,
+mixed-L1 +7.4/+7.8 incl mirror, L5s OV-or-better x3). S23/S24
+closed. Evidence: `tmp/r8land/` (union) + `tmp/r8l9new/` +
+`tmp/r8mix1neutral/`.
+
 Reading the gap (both sides in-process, no pipe floor):
 
 - Apple ahead on all 16 text/mixed codec cells (all SEPARATED,
@@ -122,7 +139,9 @@ OK, 12/12 both directions; not ship-introduced — R4 union
 FULL 57904 NEW=0 base-vs-union direct; R6 ship FULL/HOLD/
 FRESH 18800 DIV=0 base-vs-ship direct, land-rerun; R7 matrix
 re-verifies the same 9/12 IDENT + 3 mixed DIVs, DIV lines
-byte-identical x10 and == R5). Sizes within 3 B,
+byte-identical x10 and == R5; R8 union FULL/HOLD/FRESH 18800
+DIV=0 + NOWIN0 12784/0 base-vs-union direct, land-rerun, pins
+12/12 on Air too). Sizes within 3 B,
 so dec-timing inputs are size-matched.
 
 PGO is opt-in and build-only (`make pgo`; the default build tree
