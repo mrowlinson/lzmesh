@@ -29,9 +29,9 @@ exec >"$LOG" 2>&1
 echo "== air_matrix start $(date -u +%Y-%m-%dT%H:%M:%SZ) =="
 
 echo "== serial-slot guard =="
-if pgrep -f "air_matrix|fold29|fold23|p30" >/dev/null 2>&1; then
+if pgrep -f "air_matrix|air_exactcap|fold29|fold23|p30" >/dev/null 2>&1; then
   # pgrep sees our own sh wrapper; require a *second* match to refuse.
-  n=$(pgrep -f "air_matrix|fold29|fold23" 2>/dev/null | wc -l | tr -d ' ')
+  n=$(pgrep -f "air_matrix|air_exactcap|fold29|fold23" 2>/dev/null | wc -l | tr -d ' ')
   echo "slot-probe matches=$n (1=self)"
   [ "$n" -gt 2 ] && { echo SLOT-BUSY-HALT; exit 1; }
 fi
@@ -42,12 +42,12 @@ uptime
 sysctl -n hw.ncpu 2>/dev/null
 sw_vers -productVersion 2>/dev/null
 cc --version 2>/dev/null | head -n 1
-echo "EXPECT_SHA=4962f2277e025c9fa9e3b434a0b5fcba15368589 (lanes/lane-4 R10-shipped base; r11-matrix)"
+echo "EXPECT_SHA=49c308acf7a08601c03a2004651caae96087b06b (lanes/lane-4 R11-shipped base; r12-matrix)"
 echo "EXPECT_ENC_MD5=41ec58b7aa0621fea606dc6f5c258831"
-echo "EXPECT_DEC_MD5=bb5f2b9a107241fd2b8ca444a8b25286"
+echo "EXPECT_DEC_MD5=db4ae6b77fd721301a7c46c4cb677a2c"
 md5 "$P/src/lzmesh_enc.c" "$P/src/lzmesh_dec.c"
 [ "$(md5 -q "$P/src/lzmesh_enc.c")" = "41ec58b7aa0621fea606dc6f5c258831" ] || { echo TREE-PIN-FAIL-HALT-enc; exit 1; }
-[ "$(md5 -q "$P/src/lzmesh_dec.c")" = "bb5f2b9a107241fd2b8ca444a8b25286" ] || { echo TREE-PIN-FAIL-HALT-dec; exit 1; }
+[ "$(md5 -q "$P/src/lzmesh_dec.c")" = "db4ae6b77fd721301a7c46c4cb677a2c" ] || { echo TREE-PIN-FAIL-HALT-dec; exit 1; }
 echo TREE-PIN-OK
 
 echo "== corpus pins =="

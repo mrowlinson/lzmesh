@@ -9124,33 +9124,6 @@ lzmesh_u35_acc_put_fast(lzmesh_u35_acc *a, unsigned *pos,
     *pos += n;
 }
 
-/* R11-L1CONT2-H3: Huffman-put specialization (n in 1..10 proven at the
- * sole call site: table built from the emitted stream by g1_build,
- * whose q-floor loop caps solve lens at wbound<=10 and rank_assign
- * reassigns every used sym into 1..10; every stream byte is used).
- * Drops the dead n>32 slow arm and n==32 full-word arm; keeps the
- * n==0 no-op (its early return skips the flush, unlike a masked
- * no-op) and the mask (T2a unit contract). Body otherwise verbatim.
- * Contract: n <= 32. */
-static inline __attribute__((always_inline)) void
-lzmesh_u35_acc_put_huff(lzmesh_u35_acc *a, unsigned *pos,
-                        unsigned val, unsigned n) {
-    uint64_t v;
-    if (n == 0u)
-        return;
-    v = (uint64_t)(val & ((1u << n) - 1u));
-    if (a->nbits >= 32u) {
-        uint32_t w = (uint32_t)a->acc;
-        memcpy(a->out, &w, 4u);
-        a->out += 4;
-        a->acc >>= 32;
-        a->nbits -= 32u;
-    }
-    a->acc |= v << a->nbits;
-    a->nbits += n;
-    *pos += n;
-}
-
 /* R12-L0-H2 (C-PUT): L0/litonly data-put clone. Contract: e =
  * code | len<<16 with len in 1..10 (u35_lengths success: s3/PM
  * depths 1..10 for all freq>0 syms, rank_assign covers every used
@@ -12210,31 +12183,6 @@ static int lzmesh_u37_best(const uint8_t *src, size_t size, size_t pos,
                            const unsigned char *ycon,
                            const unsigned char *ywin) {
     unsigned nrep = (level == 1) ? 1u : 3u;
-    /* R12-H123-H4: L1-best fast path (dead-arm removal, exact by
-     * construction: relax==0 at the sole caller, level==1 const on
-     * this arm, nrep==1 const, MINREP=2<9 so the fused tail check
-     * returns 0 on exactly the union of the two stock tail checks;
-     * the single rep probe + mx leg are the stock nrep=1 sequence
-     * verbatim). Saves 6 dead branches/query at +2 dispatch. L5/L9
-     * pay +1 predictable dispatch branch, stock order otherwise. */
-    if (level == 1 && !relax) {
-        uint64_t h4_w8;
-        if (pos + 9u > size)
-            return 0;
-        h4_w8 = lzmesh_wl_ld64(src + pos);
-        if (lzmesh_r8_rep_probe(src, size, pos, h4_w8, recent[0], 2u,
-                                blen, bdist)) {
-            *is_rep = 1;
-            return 1;
-        }
-        if (lzmesh_r6_l1_mx_r0(src, size, pos, head, prev, hb, blen,
-                               bdist, last_m, last_end, last_rep,
-                               recent[0])) {
-            *is_rep = 0;
-            return 1;
-        }
-        return 0;
-    }
     /* R5-QBR elig-once: u37_elig(pos,size,0) predicates verbatim. Stock
      * checked elig twice (rep + slot/mx); one check dominates because
      * all three legs return 0 on elig-fail (mx_best gates on u37_elig).
@@ -13786,10 +13734,6 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
     int r6_wj4 = lzmesh_wpins_l9j4_on();
     int r6_o4 = lzmesh_o4_on();
     int r6_u3k = lzmesh_u3_imm_k();
-    /* R12-H123-H4: lazy-once (level loop-invariant; u3_lazy_on pure).
-     * L1 (lazy==0) skips the m1_long_take call in the lazy gate below;
-     * L5/L9 trade one lazy call for one local test. */
-    int h4_lazy = lzmesh_u3_lazy_on(level);
     /* R8-L9NEW R-a/R-b: snapshot read-once trace/duel gates (T9 pattern). */
     int r6_t4tr = lzmesh_t4_trace_on();
     int r6_sbduel = lzmesh_t4_sbduel_on();
@@ -13940,10 +13884,8 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
          * e01 takes NEW6-cur with rep160/31/6/5-n1 staring; e05
          * skips same beds; memo-sec4 math predicts e01 skip at
          * j7/j8 and is falsified). Gate = u3's own lazy_on. */
-        /* R12-H123-H4: lazy-once (order swap lazy-before-longtake is
-         * invisible: both arms pure, no side effects either order). */
-        if (chave && !cis_rep && h4_lazy
-            && !lzmesh_m1_long_take(level, clen) && !j4_hit) {
+        if (chave && !cis_rep && !lzmesh_m1_long_take(level, clen)
+            && lzmesh_u3_lazy_on(level) && !j4_hit) {
             uint32_t r0len = 0u, r0dist = 0u, hlen = 0u, hdist = 0u;
             int64_t sc = lzmesh_u3_score(clen, cdist, litrun);
             int r0have, hhave;
@@ -14185,17 +14127,6 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
                 if (ci < ncut && pos + step > cuts[ci])
                     step = cuts[ci] - pos;
             }
-            /* R12-H123-H4: L1 skip fast path (level const per parse;
-             * L1 always lands in the i5_on-else arm below, so skip the
-             * dead L5-drain, L9-drain and i5_on arms; the store_visit
-             * + tail-clamp sequence is that else-arm verbatim). L5/L9
-             * pay +1 predictable dispatch, stock order otherwise. */
-            if (level == 1) {
-                lzmesh_h1_store_visit(head, prev, big, small, src, size,
-                                      pos, hb, level, stored);
-                if (pos + step > size)
-                    step = size - pos;
-            } else {
             /* I4 FIX-B: flush pending catch-up (skip-walk store
              * IS a trigger: >=1 lit sees span per flushbed 8/8).
              * K2: drains the FIFO (beds G/H). */
@@ -14233,7 +14164,6 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
                 if (pos + step > size)
                     step = size - pos;
             }
-            } /* R12-H123-H4: end L1-skip else (L5/L9 stock) */
             litrun += (uint32_t)step;
             globrun += (uint32_t)step; /* F1 */
             pos += step;
@@ -16828,17 +16758,10 @@ static size_t lzmesh_h3_split(lzmesh_u37_tok *toks, size_t n_real,
          * take-end + V2 REP-join); L>=4 stays baseline (memo
          * long-exempt L>=9 join; L4-8 unbedded). */
         int litcut = 0;
-        /* R11-L1CONT2-H2: B/M hoist (blk fixed within an i-iteration
-         * except the sea-cut arm below, which refreshes both; every
-         * other blk++ site ends the iteration via continue/done). */
-        uint32_t h2B = lzmesh_u3_budget_for(blk);
-        uint32_t h2M = lzmesh_h3_max_for(blk);
-        /* R11-L1CONT2-H2: || L1-leg first (pure operands, same value;
-         * L1 takes one branch instead of three). */
-        if (r8_mse1 || (r8_mse59 && toks[i].mlen <= 3u)) {
+        if ((r8_mse59 && toks[i].mlen <= 3u) || r8_mse1) {
             int firstcut = 1;
             for (;;) {
-                uint32_t Bcur = h2B;
+                uint32_t Bcur = lzmesh_u3_budget_for(blk);
                 uint32_t Cb = S - (blk == 0u ? 1u : 0u);
                 size_t cutpos = 0u;
                 if (Cb >= Bcur) {
@@ -16884,10 +16807,6 @@ static size_t lzmesh_h3_split(lzmesh_u37_tok *toks, size_t n_real,
                 pos = cutpos;
                 S = 0u;
                 blk++;
-                /* R11-L1CONT2-H2: refresh hoisted B/M (loop-back
-                 * reuses h2B; M read after the sea loop). */
-                h2B = lzmesh_u3_budget_for(blk);
-                h2M = lzmesh_h3_max_for(blk);
                 tokb = 0u;
                 lenb = 0u;
                 firstcut = 0;
@@ -17200,67 +17119,58 @@ static size_t lzmesh_h3_split(lzmesh_u37_tok *toks, size_t n_real,
             nb++;
             goto done;
         } {
-            uint32_t B = h2B;
-            uint32_t M = h2M;
+            uint32_t B = lzmesh_u3_budget_for(blk);
+            uint32_t M = lzmesh_h3_max_for(blk);
             uint32_t cn = cost[i + 1u];
             uint32_t Cb_new = S_new - (blk == 0u ? 1u : 0u);
             int cut = 0;
             int seacut = 0;
-            /* R11-L1CONT2-H2: level dispatch (L1 skips the three dead
-             * L5/L9/YF predicates; other levels run the stock four). */
-            if (level == 1) {
-                /* Y-E01QUAD: L1 seacut twin (remain gate, no mlen
-                 * gate). Verbatim condition. */
-                if (l1mid && Cb_new < B
-                    && (size_t)B - (size_t)Cb_new
-                        < (size_t)toks[i + 1u].litrun
-                    && (size_t)B - (size_t)Cb_new
-                        >= (size_t)LZMESH_YQUAD_L1REMAIN)
-                    seacut = 1;
-            } else {
-                /* F1: strictly-mid-sea cut ahead in take i+1's sea
-                 * (L<=3 + remaining>=9, same gate as sea loop): take
-                 * i+1 opens a new block, so b/c lookahead (spanning
-                 * the future cut) is moot. == / remaining<9 / L>=4
-                 * do NOT suppress (baseline arms exact there:
-                 * memo-24, s13, V2, long-exempt). */
-                if (f1mid && level == 5 && Cb_new < B
-                    && toks[i + 1u].mlen <= 3u
-                    && (size_t)B - (size_t)Cb_new
-                        < (size_t)toks[i + 1u].litrun
-                    && (size_t)B - (size_t)Cb_new
-                        >= (size_t)LZMESH_H3_SPLITMIN)
-                    seacut = 1;
-                /* YF: L9 seacut twin (re-parse splits only, f1mid==2,
-                 * gated). L9-oracle suppresses take-end cut when take
-                 * i+1's sea mid-sea-cuts (s05 blk0 [0,16377) keeps
-                 * take@1197 despite take@16623 cost; port cut at
-                 * take-end 1200 -> oscillation -> fail-safe). Same
-                 * gate as L5. */
-                if (f1mid == 2 && level == 9
-                    && lzmesh_yf_l9cut_on()
-                    && Cb_new < B
-                    && toks[i + 1u].mlen <= 3u
-                    && (size_t)B - (size_t)Cb_new
-                        < (size_t)toks[i + 1u].litrun
-                    && (size_t)B - (size_t)Cb_new
-                        >= (size_t)LZMESH_H3_SPLITMIN)
-                    seacut = 1;
-                /* P17-PACK S-SPLITSKIP count: YF-twin condition sans
-                 * f1mid (would-fire under f1=2). Caller skips the
-                 * f1=2 re-split iff 0 (sole f1=1-vs-2 difference on
-                 * L9; induction needs identical inputs, i.e. cuts==0
-                 * since cuts mutate toks; twin-quiet + cut-free =>
-                 * states identical every iter). */
-                if (f1mid == 1 && i + 1u < n_real && level == 9
-                    && toks[i + 1u].mlen <= 3u && Cb_new < B
-                    && lzmesh_yf_l9cut_on()
-                    && (size_t)B - (size_t)Cb_new
-                        < (size_t)toks[i + 1u].litrun
-                    && (size_t)B - (size_t)Cb_new
-                        >= (size_t)LZMESH_H3_SPLITMIN)
-                    yf++;
-            }
+            /* F1: strictly-mid-sea cut ahead in take i+1's sea
+             * (L<=3 + remaining>=9, same gate as sea loop): take
+             * i+1 opens a new block, so b/c lookahead (spanning the
+             * future cut) is moot. == / remaining<9 / L>=4 do NOT
+             * suppress (baseline arms exact there: memo-24, s13,
+             * V2, long-exempt). */
+            if (f1mid && level == 5 && Cb_new < B
+                && toks[i + 1u].mlen <= 3u
+                && (size_t)B - (size_t)Cb_new
+                    < (size_t)toks[i + 1u].litrun
+                && (size_t)B - (size_t)Cb_new
+                    >= (size_t)LZMESH_H3_SPLITMIN)
+                seacut = 1;
+            /* Y-E01QUAD: L1 seacut twin (remain gate, no mlen gate). */
+            if (l1mid && level == 1 && Cb_new < B
+                && (size_t)B - (size_t)Cb_new
+                    < (size_t)toks[i + 1u].litrun
+                && (size_t)B - (size_t)Cb_new
+                    >= (size_t)LZMESH_YQUAD_L1REMAIN)
+                seacut = 1;
+            /* YF: L9 seacut twin (re-parse splits only, f1mid==2, gated).
+             * L9-oracle suppresses take-end cut when take i+1's sea
+             * mid-sea-cuts (s05 blk0 [0,16377) keeps take@1197 despite
+             * take@16623 cost; port cut at take-end 1200 -> oscillation
+             * -> fail-safe). Same gate as L5. */
+            if (f1mid == 2 && level == 9 && lzmesh_yf_l9cut_on()
+                && Cb_new < B
+                && toks[i + 1u].mlen <= 3u
+                && (size_t)B - (size_t)Cb_new
+                    < (size_t)toks[i + 1u].litrun
+                && (size_t)B - (size_t)Cb_new
+                    >= (size_t)LZMESH_H3_SPLITMIN)
+                seacut = 1;
+            /* P17-PACK S-SPLITSKIP count: YF-twin condition sans f1mid
+             * (would-fire under f1=2). Caller skips the f1=2 re-split
+             * iff 0 (sole f1=1-vs-2 difference on L9; induction needs
+             * identical inputs, i.e. cuts==0 since cuts mutate toks;
+             * twin-quiet + cut-free => states identical every iter). */
+            if (f1mid == 1 && i + 1u < n_real && level == 9
+                && toks[i + 1u].mlen <= 3u && Cb_new < B
+                && lzmesh_yf_l9cut_on()
+                && (size_t)B - (size_t)Cb_new
+                    < (size_t)toks[i + 1u].litrun
+                && (size_t)B - (size_t)Cb_new
+                    >= (size_t)LZMESH_H3_SPLITMIN)
+                yf++;
             if (Cb_new >= B) {
                 cut = 1;
             } else if (!seacut && S_new + cn > M) {
@@ -17950,10 +17860,8 @@ static size_t p16_huf_emit(uint8_t *dst, size_t dst_capacity,
                                     h[s].mcodes[h[s].vals[i]],
                                     h[s].mlens[h[s].vals[i]]);
         for (i = 0u; i < strn[s]; i++) {
-            /* R9-TEXT1-E1: hottest put site (~77k calls/rep text-L1).
-             * R11-L1CONT2-H3: huff specialization (n in 1..10: table
-             * built from this stream, q-floor+rank cap 10). */
-            lzmesh_u35_acc_put_huff(&uacc[i & 7u], &pos[i & 7u],
+            /* R9-TEXT1-E1: hottest put site (~77k calls/rep text-L1). */
+            lzmesh_u35_acc_put_fast(&uacc[i & 7u], &pos[i & 7u],
                                     h[s].codes[sp[i]],
                                     h[s].lens[sp[i]]);
             /* P16-PACK T2b: lastL-direct (store deleted; computed below). */
@@ -19869,39 +19777,13 @@ lzmesh_r6_l1_mx_r0(const uint8_t *src, size_t size, size_t pos,
 }
 
 /* R9-TEXT1-E3: force-inline (see fwd-decl note). Loops verbatim. */
-/* R11-L1CONT2-H1: x4 unroll of the _ng span loop (L1-only caller).
- * Hashes hoisted (4 loads + 4 muls pipeline; no src stores anywhere
- * so hash/store reorder is invisible); the 8 head/prev stores keep
- * stock order and values, so head/prev states (hence all future
- * queries, hence bytes) are identical. Tail (<4) runs stock. */
 static inline __attribute__((always_inline)) void
 lzmesh_h1_l1_nowin(int32_t *head, int32_t *prev,
                    const uint8_t *src, size_t size, size_t span_lo,
                    size_t end, unsigned hb) {
     size_t i;
     if (end + 8u <= size) {
-        for (i = span_lo; i + 4u <= end; i += 4u) {
-            uint32_t s0 = lzmesh_s2_hx(
-                lzmesh_u2_load_n(src + i, LZMESH_S2_MXLOAD), hb);
-            uint32_t s1 = lzmesh_s2_hx(
-                lzmesh_u2_load_n(src + i + 1u, LZMESH_S2_MXLOAD),
-                hb);
-            uint32_t s2 = lzmesh_s2_hx(
-                lzmesh_u2_load_n(src + i + 2u, LZMESH_S2_MXLOAD),
-                hb);
-            uint32_t s3 = lzmesh_s2_hx(
-                lzmesh_u2_load_n(src + i + 3u, LZMESH_S2_MXLOAD),
-                hb);
-            prev[i] = head[s0];
-            head[s0] = (int32_t)i;
-            prev[i + 1u] = head[s1];
-            head[s1] = (int32_t)(i + 1u);
-            prev[i + 2u] = head[s2];
-            head[s2] = (int32_t)(i + 2u);
-            prev[i + 3u] = head[s3];
-            head[s3] = (int32_t)(i + 3u);
-        }
-        for (; i < end; i++)
+        for (i = span_lo; i < end; i++)
             lzmesh_s2_mx_link_ng(head, prev, src, size, i, hb);
     } else {
         for (i = span_lo; i < end; i++)
