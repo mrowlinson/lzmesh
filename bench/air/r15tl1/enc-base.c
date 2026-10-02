@@ -11748,9 +11748,6 @@ static int lzmesh_i3_l1_span_hide(int level, size_t pos, size_t qq,
     lo = last_rep ? last_m : last_m + 1u;
     return qq >= lo && qq < last_end;
 }
-/* R14-TL1STACK-SPAN: KILLED (verified asm-IDENTICAL whole-file vs
- * stock: clang -O2 VRP already folds the retest; memo DROP-r14-
- * memo-tl1stack sec0 confirmed first-hand). Call sites stock. */
 
 /* === S2 e01 MX lane (owner: S2; LANE-S2; codes NEW) ===
  * Oracle L1 = MX hash lane, big table only, NO small table
@@ -13865,9 +13862,6 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
      * L1 (lazy==0) skips the m1_long_take call in the lazy gate below;
      * L5/L9 trade one lazy call for one local test. */
     int h4_lazy = lzmesh_u3_lazy_on(level);
-    /* R13-TL1-H5: wpins L1J4LONG snapshot (cached env gate, read-once;
-     * R6-T9 precedent: env fixed per run, snapshot invisible). */
-    int h5_l1j4long = lzmesh_wpins_l1j4long_on();
     /* R8-L9NEW R-a/R-b: snapshot read-once trace/duel gates (T9 pattern). */
     int r6_t4tr = lzmesh_t4_trace_on();
     int r6_sbduel = lzmesh_t4_sbduel_on();
@@ -13974,20 +13968,12 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
          * port over-stores C (751/763 via skipback) so the leg fires
          * early and regresses takes (R748-e09 847->844 vs o848);
          * blocked on backfill-condition (OPEN, QUESTION-S4-1). */
-        /* R13-TL1-H5: J4 L1-spec gate (level const per parse; m1(1,.)
-         * == u3_long_take; default wpins-ON makes the long-arm TRUE so
-         * the local is tested first and short-circuits). L1 saves the
-         * level-dispatch + m1/wpins calls; L5 +1 predictable dispatch,
-         * L9 same count, stock order otherwise. Same predicate value. */
-        if (chave && !cis_rep
-            && (level == 1
-                ? (litrun >= 1u
-                   && (h5_l1j4long || !lzmesh_u3_long_take(clen))
-                   && (size_t)cdist + 8u <= pos)
-                : ((level == 5 || (level == 9 && r6_wj4))
-                   && litrun >= 1u
-                   && !lzmesh_m1_long_take(level, clen)
-                   && (size_t)cdist + 8u <= pos))) {
+        if (chave && !cis_rep && (level == 5 || level == 1
+                || (level == 9 && r6_wj4))
+            && litrun >= 1u
+            && (!lzmesh_m1_long_take(level, clen)
+                || (level == 1 && lzmesh_wpins_l1j4long_on()))
+            && (size_t)cdist + 8u <= pos) {
             uint32_t j4back = lzmesh_u3_backext(src, pos, cdist);
             if (level == 9 && j4back != 1u) {
                 /* ZDUEL-J4LIT1 (LANE-Z-DUEL): L9 back-1 of a back-2+
@@ -15073,48 +15059,16 @@ typedef struct {
 static int lzmesh_g1_build(const uint8_t *s, size_t n,
                            lzmesh_g1_huff *h) {
     uint32_t freq[256];
-    /* R14-TL1STACK-G1 (C-FREQ): extra histogram lanes (see below). */
-    uint32_t gf1[256], gf2[256], gf3[256];
     uint32_t mfreq[11];
     uint32_t bm = 0u;
     unsigned u, i, nz;
     uint64_t dbits = 0u, pbits = 0u;
     if (s == NULL || h == NULL || n == 0u || n > 65535u)
         return 0;
-    /* R14-TL1STACK-G1 (C-FREQ): 4-lane unrolled histogram (H1 analog
-     * in u35_lengths). The scalar freq[s[i]]++ is a load-add-store
-     * dependency chain; u35_lengths NEVER runs on tL1 so H1 does not
-     * cover this site (ANSWER-r13-tl1-1). 4 independent tables x 4-way
-     * unroll break the chain; histogram sums commute so the combine
-     * is exact. Each lane <= n <= 65535 (no u32 overflow). N-GATE:
-     * same fixed cost as H1 (~1800 ops) => scalar-verbatim under
-     * 1024B, 4-lane above (tL1 n~3959, prize intact). */
-    if ((unsigned)n < 1024u) {
-        for (i = 0u; i < 256u; i++)
-            freq[i] = 0u;
-        for (i = 0u; i < (unsigned)n; i++)
-            freq[s[i]]++;
-    } else {
-        for (i = 0u; i < 256u; i++) {
-            freq[i] = 0u;
-            gf1[i] = 0u;
-            gf2[i] = 0u;
-            gf3[i] = 0u;
-        }
-        {
-            unsigned n4 = (unsigned)n, m4 = n4 & ~3u;
-            for (i = 0u; i < m4; i += 4u) {
-                freq[s[i]]++;
-                gf1[s[i + 1u]]++;
-                gf2[s[i + 2u]]++;
-                gf3[s[i + 3u]]++;
-            }
-            for (; i < n4; i++)
-                freq[s[i]]++;
-            for (i = 0u; i < 256u; i++)
-                freq[i] += gf1[i] + gf2[i] + gf3[i];
-        }
-    }
+    for (i = 0u; i < 256u; i++)
+        freq[i] = 0u;
+    for (i = 0u; i < (unsigned)n; i++)
+        freq[s[i]]++;
     { /* D3 H5DEEP q-floor sym (u35_tryq verbatim). */
         uint32_t qfreq[256];
         unsigned unsym = 0u, wbound, qq, mx, i2;
@@ -17515,12 +17469,10 @@ static int lzmesh_h3_probe(const uint8_t *src,
                            uint32_t *tokc_out, uint32_t *lenc_out,
                            uint32_t *litc_out, uint32_t *distc_out,
                            unsigned laneb_out[8], uint8_t idx_out[24],
-                           unsigned *idxsz_out, int *streams_ok,
-                           unsigned *bitc_out) {
+                           unsigned *idxsz_out, int *streams_ok) {
     size_t li = 0u, ti = 0u, eni = 0u, di = 0u, t;
     size_t cpos;
     uint32_t litc, tokc, lenc, distc, ds;
-    uint32_t dslot; /* R15-TL1-T2 S3-FUSE: fused NEW-take counter. */
     uint32_t m_lit, m_tok, m_len, m_dist, modes;
     uint32_t litB, tokB, lenB, distB, bo, fo;
     unsigned bitc[8], laneb[8], k;
@@ -17549,15 +17501,6 @@ static int lzmesh_h3_probe(const uint8_t *src,
             return 0;
         lit[li++] = src[off];
     }
-    /* R15-TL1-T2 S3-FUSE (ANSWER-r15-tl1-1 sec-c): T2 fused into the
-     * T-loop NEW leg below. bitc zeroed here (was: before deleted T2);
-     * dslot counts NEW takes in T-loop order. bitc untouched between
-     * T-loop and old T2 (counts/gates/eq-scans/modes/bo only); every
-     * exit in between returns 0 with bitc stack-local => exact. dslot
-     * (not slot: REP leg shadows `slot`). */
-    for (k = 0u; k < 8u; k++)
-        bitc[k] = 0u;
-    dslot = 0u;
     for (t = start; t < end; t++) {
         uint32_t run = toks[t].litrun;
         uint32_t mlen = toks[t].mlen;
@@ -17582,11 +17525,6 @@ static int lzmesh_h3_probe(const uint8_t *src,
                 return 0;
             tok[ti++] = lzmesh_u7_token_new(lit_f, ms);
             lzmesh_u4_dist_split_nc(dist, &sb, &low, &suf);
-            /* R15-TL1-T2 S3-FUSE: accumulate (sb == sb_of(dist) by
-             * split_nc; same NEW order => identical lanes). Guards
-             * below return 0 => partial state unobservable. */
-            bitc[dslot % 8u] += sb;
-            dslot++;
             if (sb > 28u || dist == 0u)
                 return 0;
             if (sb < 31u && suf >= (1u << sb))
@@ -17759,13 +17697,21 @@ static int lzmesh_h3_probe(const uint8_t *src,
             return 0;
         bo = (uint32_t)b64;
     }
-    /* R15-TL1-T2 S3-FUSE: bitc already fused (no re-zero); laneb init. */
-    for (k = 0u; k < 8u; k++)
+    for (k = 0u; k < 8u; k++) {
+        bitc[k] = 0u;
         laneb[k] = 0u;
-    /* R15-TL1-T2 S3-FUSE: T2 loop deleted (fused into T-loop NEW leg);
-     * distc cross-check on fused dslot. */
-    if (dslot != distc)
-        return 0;
+    }
+    {
+        uint32_t slot = 0u;
+        for (t = start; t < end; t++) {
+            if (!toks[t].is_new)
+                continue;
+            bitc[slot % 8u] += lzmesh_u3_sb_of(toks[t].dist);
+            slot++;
+        }
+        if (slot != distc)
+            return 0;
+    }
     for (k = 0u; k < 8u; k++) {
         laneb[k] = (bitc[k] + 7u) >> 3;
         payload += laneb[k];
@@ -17799,11 +17745,6 @@ static int lzmesh_h3_probe(const uint8_t *src,
     for (k = 0u; k < idxsz; k++)
         idx_out[k] = idx[k];
     *idxsz_out = idxsz;
-    /* R15-TL1-T2 S4-THREAD: publish fused bitc (streams-complete point;
-     * sok-gated by construction: only reached when outs publish). */
-    if (bitc_out != NULL)
-        for (k = 0u; k < 8u; k++)
-            bitc_out[k] = bitc[k];
     if (streams_ok != NULL)
         *streams_ok = 1;
     if (!lzmesh_u4_comp_gates_ok(ds, bo, fo))
@@ -17854,8 +17795,7 @@ static size_t p16_huf_measure(const uint8_t *lit, size_t li,
                               const lzmesh_u37_tok *toks, size_t start,
                               size_t end, uint32_t litc, uint32_t tokc,
                               uint32_t lenc, uint32_t distc, uint32_t ds,
-                              int is_first, const unsigned *memo_bitc,
-                              p16_huf_ctx *ctx) {
+                              int is_first, p16_huf_ctx *ctx) {
     const uint8_t *str[4];
     size_t strn[4];
     lzmesh_g1_huff h[4];
@@ -17943,30 +17883,7 @@ static size_t p16_huf_measure(const uint8_t *lit, size_t li,
         for (i = 0u; i < strn[s]; i++)
             bitc[i & 7u] += h[s].lens[sp[i]];
     }
-    if (memo_bitc != NULL) {
-        /* R15-TL1-T2 S4-THREAD (ANSWER-r15-tl1-1-ADD1): consume the
-         * probe-published take bitc (same takes/subrange; takes
-         * immutable loop1->loop2, no new assumption: emit already
-         * mixes memo lanes + takes). bitc ADDS (stream bits already
-         * in); sufbits == take bitc (identical += sb from 0);
-         * sbb[j] = dsym[j]>>3 (dsym=(sb<<3)|low, slot order == di
-         * order); slot!=distc vacuous (same takes probe counted).
-         * Malloc-fail shape == stock (NULL sbb, continue, emit
-         * falls back to split_nc). */
-        uint32_t j;
-        if (ctx != NULL)
-            ctx->sbb = (distc == 0u) ? NULL : (uint8_t *)malloc(distc);
-        for (k = 0u; k < 8u; k++) {
-            bitc[k] += memo_bitc[k];
-            sufbits[k] = memo_bitc[k];
-        }
-        /* dsym non-NULL: h3_multi entry-guards it; memo path only
-         * runs there. di == distc validated at S4 entry. */
-        if (ctx != NULL && ctx->sbb != NULL) {
-            for (j = 0u; j < distc; j++)
-                ctx->sbb[j] = (uint8_t)(dsym[j] >> 3);
-        }
-    } else {
+    {
         uint32_t slot = 0u;
         /* P17-PACK S-SBSTASH: stash sb per NEW take for emit. */
         if (ctx != NULL)
@@ -18250,7 +18167,7 @@ static size_t lzmesh_h3_huf_block(const uint8_t *lit, size_t li,
     p16_huf_ctx ctx;
     size_t hsz = p16_huf_measure(lit, li, tok, ti, len, eni, dsym, di,
                                  toks, start, end, litc, tokc, lenc,
-                                 distc, ds, is_first, NULL, &ctx);
+                                 distc, ds, is_first, &ctx);
     if (hsz == 0u) {
         free(ctx.sbb);
         return 0u;
@@ -18322,7 +18239,6 @@ typedef struct {
     uint8_t idx[24];
     unsigned idxsz;
     size_t rhsz;
-    unsigned bitc[8]; /* R15-TL1-T2 S4-THREAD: probe-published take bitc */
     uint8_t *lanes; /* lit[litc]+tok[tokc]+len[lenc]+dsym[distc] */
 } p16_mblk;
 static void p16_mblk_free(p16_mblk *mb, size_t n) {
@@ -18357,7 +18273,6 @@ static size_t lzmesh_h3_multi(const uint8_t *src, size_t size,
     for (i = 0u; i < nblocks; i++) {
         uint32_t fo, bo, modes, tokc, lenc, litc, distc;
         unsigned laneb[8], idxsz = 0u;
-        unsigned bitc1[8]; /* R15-TL1-T2 S4-THREAD: probe bitc publish */
         uint8_t idx[24];
         size_t t;
         int is_first = (i == 0u) ? 1 : 0;
@@ -18368,8 +18283,7 @@ static size_t lzmesh_h3_multi(const uint8_t *src, size_t size,
                                       blks[i].off, blks[i].bs, is_first,
                                       lit, tok, len, dsym, bufcap, &fo,
                                       &bo, &modes, &tokc, &lenc, &litc,
-                                      &distc, laneb, idx, &idxsz, &sok,
-                                      bitc1);
+                                      &distc, laneb, idx, &idxsz, &sok);
         (void)bo;
         (void)modes;
         (void)tokc;
@@ -18401,8 +18315,6 @@ static size_t lzmesh_h3_multi(const uint8_t *src, size_t size,
             m->distc = distc;
             for (kk = 0u; kk < 8u; kk++)
                 m->laneb[kk] = laneb[kk];
-            for (kk = 0u; kk < 8u; kk++)
-                m->bitc[kk] = bitc1[kk];
             memcpy(m->idx, idx, idxsz);
             m->idxsz = idxsz;
             m->rhsz = rhsz;
@@ -18486,7 +18398,6 @@ static size_t lzmesh_h3_multi(const uint8_t *src, size_t size,
         for (i = 0u; i < nblocks; i++) {
             uint32_t fo, bo, modes, tokc, lenc, litc, distc;
             unsigned laneb[8], idxsz = 0u, k;
-            unsigned p16_bitc[8]; /* R15-TL1-T2 S4-THREAD: memo bitc */
             uint8_t idx[24];
             int is_first = (i == 0u) ? 1 : 0;
             int sok = 0;
@@ -18509,8 +18420,6 @@ static size_t lzmesh_h3_multi(const uint8_t *src, size_t size,
                 distc = m->distc;
                 for (kk = 0u; kk < 8u; kk++)
                     laneb[kk] = m->laneb[kk];
-                for (kk = 0u; kk < 8u; kk++)
-                    p16_bitc[kk] = m->bitc[kk];
                 memcpy(idx, m->idx, m->idxsz);
                 idxsz = m->idxsz;
                 if (m->lanes != NULL) {
@@ -18529,8 +18438,7 @@ static size_t lzmesh_h3_multi(const uint8_t *src, size_t size,
                                           is_first, lit, tok, len, dsym,
                                           bufcap, &fo, &bo, &modes,
                                           &tokc, &lenc, &litc, &distc,
-                                          laneb, idx, &idxsz, &sok,
-                                          NULL);
+                                          laneb, idx, &idxsz, &sok);
             }
             uint32_t ds = (uint32_t)blks[i].bs;
             uint32_t m_lit, m_tok, m_len, m_dist;
@@ -18545,9 +18453,7 @@ static size_t lzmesh_h3_multi(const uint8_t *src, size_t size,
                                              (size_t)distc, toks,
                                              blks[i].start, blks[i].end,
                                              litc, tokc, lenc, distc,
-                                             ds, is_first,
-                                             p16_memo ? p16_bitc : NULL,
-                                             &p16c);
+                                             ds, is_first, &p16c);
                 if (hsz != 0u && hsz <= (size_t)fo + 10u
                     && need - s >= hsz) {
                     size_t hw = p16_huf_emit(dst + s, need - s,
@@ -18828,7 +18734,6 @@ static size_t lzmesh_u37_build(const uint8_t *src, size_t size,
     size_t ntok, li, ti, eni, di, t;
     size_t cpos;
     uint32_t litc, tokc, lenc, distc, ds;
-    uint32_t dslot; /* R15-TL1-T2 S6-FUSE: fused NEW-take counter. */
     uint32_t m_lit, m_tok, m_len, m_dist, modes;
     uint32_t litB, tokB, lenB, distB, bo, fo;
     unsigned bitc[8], laneb[8], k;
@@ -19200,12 +19105,6 @@ static size_t lzmesh_u37_build(const uint8_t *src, size_t size,
     di = 0u;
     cpos = 1u;
     lit[li++] = src[0];
-    /* R15-TL1-T2 S6-FUSE (ANSWER-r15-tl1-1 sec-c, S3 mirror): T2 fused
-     * into the T-loop NEW leg below. Exits in between goto out with
-     * need == 0 (set only on success path); bitc stack-local => exact. */
-    for (k = 0u; k < 8u; k++)
-        bitc[k] = 0u;
-    dslot = 0u;
     for (t = 0u; t < ntok; t++) {
         uint32_t run = toks[t].litrun;
         uint32_t mc, ms;
@@ -19232,10 +19131,6 @@ static size_t lzmesh_u37_build(const uint8_t *src, size_t size,
                 goto out;
             tok[ti++] = lzmesh_u7_token_new(lit_f, ms);
             lzmesh_u4_dist_split_nc(toks[t].dist, &sb, &low, &suf);
-            /* R15-TL1-T2 S6-FUSE: accumulate (sb == sb_of(dist);
-             * same NEW order => identical lanes). */
-            bitc[dslot % 8u] += sb;
-            dslot++;
             if (sb > 28u || suf >= (sb >= 31u ? 0xFFFFFFFFu : (1u << sb))
                 || toks[t].dist == 0u)
                 goto out;
@@ -19379,13 +19274,22 @@ static size_t lzmesh_u37_build(const uint8_t *src, size_t size,
             goto out;
         bo = (uint32_t)b;
     }
-    /* Suffix lanes: slot i -> lane i%8, sb bits LSB-first.
-     * R15-TL1-T2 S6-FUSE: T2 loop deleted (fused into T-loop NEW leg);
-     * bitc already fused (no re-zero); check on fused dslot. */
-    for (k = 0u; k < 8u; k++)
+    /* Suffix lanes: slot i -> lane i%8, sb bits LSB-first. */
+    for (k = 0u; k < 8u; k++) {
+        bitc[k] = 0u;
         laneb[k] = 0u;
-    if (dslot != distc)
-        goto out;
+    }
+    {
+        uint32_t slot = 0u;
+        for (t = 0u; t < ntok; t++) {
+            if (!toks[t].is_new)
+                continue;
+            bitc[slot % 8u] += lzmesh_u3_sb_of(toks[t].dist);
+            slot++;
+        }
+        if (slot != distc)
+            goto out;
+    }
     for (k = 0u; k < 8u; k++) {
         laneb[k] = (bitc[k] + 7u) >> 3;
         payload += laneb[k];

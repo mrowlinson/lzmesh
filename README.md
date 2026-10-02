@@ -284,6 +284,34 @@ priced the stack ceiling (+4.3–4.8 source, PGO-stack +12.0 the
 only +5 closer) and re-moded H5 as fetch diet. Evidence stays
 on the lane branches (HOLD verdicts banked, not merged).
 
+R15 folds a fresh 24-cell matrix onto the R13 SHIP (pre-ship
+tip: tables above still read R14 absolutes until the next
+re-rank; R15 matrix n=70, MacBookAir, 23 SEPARATED / 1
+OVERLAP, 264/264 gates PASS), confirming R13 3/3 CONFIRM
+(rel −2.9/−0.7/−0.6%, medians inside A/B-opt) with HOLD
+cells 3/3 UNCHANGED (rel −0.2% each) and 18/18 non-ship
+cells UNMOVED. Top-5 same cells, #1/#2 noise swap (0.1pp):
+text L9 enc −64.8%, mixed L9 enc −64.7%, mixed L5 −62.6%,
+mixed L1 −62.1%, text L1 −60.5%. Full R15 tables:
+`tmp/matrix-r15/RANKING.md`.
+
+R15 ships tl1 stack+T2+S4 (banked H5+g1 verbatim + T2
+per-site fusion on S3/S6, sb reused, T2 loops deleted +
+S4-thread bitc publish via mblk; enc md5 c5ed7082; +142/−46
+enc.c only): 3 SEP all opt-faster / 21 OV / 0 slower
+(n=35 gated A/B) — text L1 enc +7.9% flagship
+(128.93→139.12, 35/35 reps) + text L5 +4.3 / L9 +2.9 SEP.
+Gap-share vs R15 ranking: text L1 +3.1pp (−60.3→−57.2),
+text L5 +1.8pp, text L9 +1.0pp. T2+S4 realized ~+3.2 vs
+priced +0.3–0.5 (superadditive; fetch-model autopsy owed).
+PGO-stack +12.0 text L1 (6th straight 0-slower PGO round)
+and dbits closers MOOT. mL9 3-layer HOLD carries (mixed L9
+enc +3.2% OV flagship below bar, banked d4060747; unpriced
+runscan-x-G1 L1 interaction +9.7/+6.6 banked unshipped,
+union re-measure mandatory on any future merge). Evidence:
+`tmp/r15tl1/` (gates + Air n35 + 57904-direct) +
+`port/bench/air/r15tl1/` + land re-runs `tmp/r15land/`.
+
 Reading the gap (both sides in-process, no pipe floor):
 
 - Apple ahead on all 16 text/mixed codec cells (all SEPARATED,
