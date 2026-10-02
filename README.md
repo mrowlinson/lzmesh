@@ -54,8 +54,12 @@ box back-to-back), MacBookAir M1, Apple clang 21 `-O2 -std=c11`,
 tree lanes/lane-4 @ 774e0c7 (R4 SHIP: decres replay-fast-loop
 + enc5 C3-7B-peek-fuse;
 `port/src/lzmesh_enc.c` md5 f4cc2699,
-`port/src/lzmesh_dec.c` md5 5fa2dea5; this README
-folded on top, code-identical). Port = in-process
+`port/src/lzmesh_dec.c` md5 5fa2dea5; tables + PGO below
+read this tree) with R6 SHIP folded on top (tree @ c05555f30,
+lanes/r6-land: T9+QBR L9-enc razor;
+`port/src/lzmesh_enc.c` md5 ac44f320,
+`port/src/lzmesh_dec.c` md5 5fa2dea5 unchanged;
+code-identical to this fold). Port = in-process
 (`bench/bench.c`); Apple = stdio-pipe floor
 (`bench/oracle-bench.py` over `oracle_probe`): every Apple sample
 includes fork+exec+dlopen+pipes, so Apple in-process ≥ quoted,
@@ -83,8 +87,19 @@ pp vs R3 base, all SEPARATED, 0 slower anywhere) and enc5-C3
 lifts text L5 enc to 85.79 (+2.8 SEPARATED). Mixed L5 dec reads
 932.84 (+11.9 median, OVERLAP — run2 outlier, NO-CLAIM).
 enc9text-F2 and enc0-C-ZERO carried (bytes-green, 0 SEP,
-prizeless at gate n) — mixed L9 enc stays the open frontier
-(port 67.04 vs piped Apple 28.80, NO-CLAIM).
+prizeless at gate n) — mixed L9 enc was the open frontier
+at R4 (port 67.04 vs piped Apple 28.80, NO-CLAIM); R6 ships
+it (next paragraph).
+
+R6 ships L9 encode (T9+QBR: peek-r1 legs + flood/span/
+direct splits + gate snapshot over the QBR query razor;
+enc md5 ac44f320): text L9 enc +10.6% SEPARATED (n=25 gated
+A/B base-vs-new, 55.51→61.36) and mixed L9 enc +14.3%
+SEPARATED (67.02→76.64), 0 slower across 18 L1/L5/L9 cells.
+Gap-share vs R5 ranking: text +2.57pp (−75.6→−73.0), mixed
++3.24pp (−77.4→−74.2). Tables above still read R4-tree
+absolutes (n=70, 774e0c7); L9-enc port cells + PGO refresh
+next full-matrix round.
 
 Reading the gap (which direction each claim favors):
 
@@ -109,7 +124,9 @@ Byte note: port enc == Apple enc on 9/12 cells; mixed-128k
 L1/L5/L9 differ (e01 34181@1152, same length; e05 32799v32796@2;
 e09 32708v32707@8; every output self-roundtrips and cross-decodes
 OK, 12/12 both directions; not ship-introduced — R4 union
-FULL 57904 NEW=0 base-vs-union direct). Sizes within 3 B,
+FULL 57904 NEW=0 base-vs-union direct; R6 ship FULL/HOLD/
+FRESH 18800 DIV=0 base-vs-ship direct, land-rerun). Sizes
+within 3 B,
 so dec-timing inputs are size-matched.
 
 PGO is opt-in and build-only (`make pgo`; the default build tree
