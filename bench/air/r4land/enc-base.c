@@ -11573,47 +11573,6 @@ static int lzmesh_u1_mx_shadowed(const uint8_t *s, size_t n, size_t p) {
 /* YF fwd decl (defined below; h3 visited-gate). Precedes slot_best. */
 /* R2-ENC9 A4: fuse (was outline x2 in parse). */
 static inline __attribute__((always_inline)) int lzmesh_yf_svisg_on(void);
-/* R4-ENC5 C3: L5 peek 7B-only probe (h1 leg of slot_best verbatim).
- * Exact: the cascade tries h1 first with early return; any h2/h3 win
- * carries tier 5/3 and dies at the I4 FIX-A gate, and h1 head-match +
- * filter-fail returns 0 strict (E4) in both shapes. blen/bdist are
- * written only on an h1 win; the peek caller consumes them only when
- * hhave (short-circuit duel guards; T4 trace print is output-only). */
-static inline __attribute__((always_inline)) int
-lzmesh_u37_slot_best_h1only(const uint8_t *src, size_t size, size_t pos,
-                             const uint32_t *big, unsigned hb,
-                             uint32_t *blen, uint32_t *bdist,
-                             int relax) {
-    uint32_t q;
-    uint64_t p11_w8 = 0u;
-    int p11_fused;
-    if (pos + LZMESH_U37_MINREP > size)
-        return 0;
-    if (!relax && pos + 9u > size)
-        return 0;
-    p11_fused = (pos + 8u <= size);
-    if (p11_fused)
-        p11_w8 = lzmesh_wl_ld64(src + pos);
-    if (pos + 7u <= size) {
-        q = big[lzmesh_u2_h1(p11_fused ? (p11_w8 & 0xFFFFFFFFFFFFFFull)
-                                       : lzmesh_u2_load_n(src + pos, 7u),
-                             hb)];
-        if (q != LZMESH_U2_EMPTY && (size_t)q < pos
-            && lzmesh_mf_head_eq(src + pos, p11_w8, p11_fused, src + q,
-                                 (size_t)q + 8u <= size, 7u)) {
-            uint32_t dist = (uint32_t)pos - q;
-            uint32_t ln = lzmesh_u37_extend(src, size, pos, (size_t)q,
-                                            7u);
-            if (ln < 7u
-                || dist >= lzmesh_p3_filt_maxd[ln < 6u ? ln : 6u])
-                return 0; /* strict: winner fail = miss */
-            *blen = ln;
-            *bdist = dist;
-            return 1;
-        }
-    }
-    return 0;
-}
 static inline __attribute__((always_inline)) int
 lzmesh_u37_slot_best(const uint8_t *src, size_t size, size_t pos,
                                 const uint32_t *big, const uint32_t *small,
@@ -13151,17 +13110,10 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
                                           prev, hb, &hlen, &hdist, level,
                                           last_m, last_end, last_rep,
                                           recent[0], 0);
-            else if (level == 5)
-                /* R4-ENC5 C3: 7B-only probe (h2/h3 legs elided; tier 7
-                 * implied, gate below passes through). */
-                hhave = lzmesh_u37_slot_best_h1only(src, size, pos + 1u,
-                                                    big, hb, &hlen,
-                                                    &hdist, 1),
-                mf_htier = hhave ? 7 : 0;
             else
                 hhave = lzmesh_u37_slot_best(src, size, pos + 1u, big,
                                              small, hb, &hlen, &hdist,
-                                             (level == 9 && lzmesh_u8_relax_on()) ? 1 : 0,
+                                             (level == 5 || (level == 9 && lzmesh_u8_relax_on())) ? 1 : 0,
                                              level, i5v,
                                              i5md.ycon, i5md.ywin,
                                              &mf_htier);
