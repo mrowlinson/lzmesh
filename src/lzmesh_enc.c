@@ -8983,8 +8983,24 @@ int lzmesh_u36_want(const uint8_t *src, size_t size, int level) {
 /* LSB-first bit put into lane base; *pos advances.
  * P2-bitio shape (same bits ORed, same *pos advance); P15-PACK P5
  * implements it as one masked 64-bit RMW (was per-byte loop). */
+/* R9-TEXT1-E2: fwd decl (slow below calls the wrapper further down). */
 static void lzmesh_u35_put(uint8_t *base, unsigned *pos, unsigned val,
-                           unsigned n) {
+                           unsigned n);
+/* R9-TEXT1-E2: cold slow half (n>32 two-put). Outlined so fast is
+ * recursion-free and force-inlinable. */
+__attribute__((noinline)) static void
+lzmesh_u35_put_slow(uint8_t *base, unsigned *pos, unsigned val,
+                    unsigned n) {
+    lzmesh_u35_put(base, pos, val, 32u);
+    lzmesh_u35_put(base, pos, 0u, n - 32u);
+}
+
+/* R9-TEXT1-E2: fast half, force-inline at the sole h3-suffix site
+ * (34.5k calls/rep text-L1; sb<=31 there per P5). Body verbatim
+ * incl the n>32 slow-fallback arm (dead but exact on all inputs). */
+static inline __attribute__((always_inline)) void
+lzmesh_u35_put_fast(uint8_t *base, unsigned *pos, unsigned val,
+                    unsigned n) {
     /* P15-PACK P5: word RMW (was per-byte loop). Sole caller: h3 suffix
      * (sb<=31). n==0 no-op, n>32 fail-safe two-put (acc_put precedent)
      * preserve the generic contract. */
@@ -8996,8 +9012,7 @@ static void lzmesh_u35_put(uint8_t *base, unsigned *pos, unsigned val,
     if (n == 0u)
         return;
     if (n > 32u) {
-        lzmesh_u35_put(base, pos, val, 32u);
-        lzmesh_u35_put(base, pos, 0u, n - 32u);
+        lzmesh_u35_put_slow(base, pos, val, n);
         return;
     }
     mask = (n >= 32u) ? 0xFFFFFFFFu : (uint32_t)((1u << n) - 1u);
@@ -9006,6 +9021,12 @@ static void lzmesh_u35_put(uint8_t *base, unsigned *pos, unsigned val,
     memcpy(&w, base + b, sizeof w);
     w |= v;
     memcpy(base + b, &w, sizeof w);
+}
+
+/* R9-TEXT1-E2: outline u35_put kept (thin wrapper; contract path). */
+static void lzmesh_u35_put(uint8_t *base, unsigned *pos, unsigned val,
+                           unsigned n) {
+    lzmesh_u35_put_fast(base, pos, val, n);
 }
 
 /* P6-W4 word accumulator: per-lane 64b bit buffer, 4B word flush.
@@ -9022,14 +9043,31 @@ typedef struct {
     uint8_t *out;
 } lzmesh_u35_acc;
 
+/* R9-TEXT1-E1: fwd decl (slow below calls the wrapper further down). */
 static void lzmesh_u35_acc_put(lzmesh_u35_acc *a, unsigned *pos,
-                               unsigned val, unsigned n) {
+                               unsigned val, unsigned n);
+/* R9-TEXT1-E1: cold slow half (n>32 two-put; measured unreachable,
+ * kept for the generic contract). Outlined so the fast half below is
+ * recursion-free and force-inlinable. */
+__attribute__((noinline)) static void
+lzmesh_u35_acc_put_slow(lzmesh_u35_acc *a, unsigned *pos,
+                        unsigned val, unsigned n) {
+    lzmesh_u35_acc_put(a, pos, val, 32u);
+    lzmesh_u35_acc_put(a, pos, 0u, n - 32u);
+}
+
+/* R9-TEXT1-E1: fast half, force-inline at the 4 p16_huf_emit sites
+ * (~80k calls/rep text-L1; n is 3/32/<=14/<=32 there). Body verbatim
+ * incl the n>32 slow-fallback arm (dead but exact on all inputs).
+ * Other 20+ sites keep calling the outline acc_put (cold). */
+static inline __attribute__((always_inline)) void
+lzmesh_u35_acc_put_fast(lzmesh_u35_acc *a, unsigned *pos,
+                        unsigned val, unsigned n) {
     uint64_t v;
     if (n == 0u)
         return; /* sb=0 no-op (matches u35_put) */
-    if (n > 32u) { /* unreachable (measured max 32); zero-fill like u35_put */
-        lzmesh_u35_acc_put(a, pos, val, 32u);
-        lzmesh_u35_acc_put(a, pos, 0u, n - 32u);
+    if (n > 32u) {
+        lzmesh_u35_acc_put_slow(a, pos, val, n);
         return;
     }
     /* P16-PACK T2a KILLED (unit contract): mask removal broke u35acc
@@ -9049,6 +9087,13 @@ static void lzmesh_u35_acc_put(lzmesh_u35_acc *a, unsigned *pos,
     a->acc |= v << a->nbits;
     a->nbits += n;
     *pos += n;
+}
+
+/* R9-TEXT1-E1: outline acc_put kept for the 20+ cold sites (thin
+ * wrapper; fast inlines here too, 1 copy). */
+static void lzmesh_u35_acc_put(lzmesh_u35_acc *a, unsigned *pos,
+                               unsigned val, unsigned n) {
+    lzmesh_u35_acc_put_fast(a, pos, val, n);
 }
 
 static void lzmesh_u35_acc_flush(lzmesh_u35_acc *a) {
@@ -10200,6 +10245,29 @@ static int lzmesh_h6_has_fresh6(const uint8_t *s, size_t n) {
         return 0;
     if (n > (size_t)LZMESH_U35M6_NMAX)
         return 1;
+    /* R9-MIX1 F6-PRE: exact small-table prefilter (stack, no malloc).
+     * Same open-hash semantics as the full table below over j in
+     * [2,F6PRE_J): a hit here is a true fresh6 (memcmp-verified) so
+     * return 1 is sound. Miss => fall through to the full table
+     * (verbatim path). Bench j_hit 292/12 << F6PRE_J; FULL 46/47
+     * hits within range, 21 full-scan cells pay +2048 probes. L1-only
+     * callers (u35m6 want/emit gate level==1 first): L5 executes zero
+     * bytes here. */
+    {
+        enum { F6PRE_K = 4096u, F6PRE_J = 2048u };
+        lzmesh_h6_slot pt[F6PRE_K];
+        uint32_t pti;
+        size_t pj;
+        for (pti = 0u; pti < F6PRE_K; pti++)
+            pt[pti].pos = LZMESH_H6_EMPTY;
+        lzmesh_h6_insert(pt, F6PRE_K - 1u, s, 0u);
+        lzmesh_h6_insert(pt, F6PRE_K - 1u, s, 1u);
+        for (pj = 2u; pj + 9u <= n && pj < (size_t)F6PRE_J; pj++) {
+            if (lzmesh_h6_query(pt, F6PRE_K - 1u, s, pj))
+                return 1;
+            lzmesh_h6_insert(pt, F6PRE_K - 1u, s, pj);
+        }
+    }
     hb = 0u;
     m = n;
     while (m > 1u) {
@@ -12184,8 +12252,12 @@ lzmesh_h1_store_visit(int32_t *head, int32_t *prev,
  * from span_lo (m+1 when m direct-stored, m on challenger-win peek),
  * then gap backward (unvisited windowed-i only). vis = caller-owned
  * size bytes; marks visits in [ins, m). */
-/* R8-MIX1NEUTRAL try-1: L1-nowin span loops out-of-line (body EOF). */
-static __attribute__((noinline)) void
+/* R9-TEXT1-E3: L1-nowin span loops force-INLINE (reverses R8
+ * noinline; 34.6k outline calls/rep on text-L1 at ~25 instr/call
+ * saved vs ~25 instr parse growth. L1-only caller (catchup L1-nowin
+ * arm); L5/L9 never execute it (layout-only effect there, gated by
+ * Air 951 L5-neutrality). Body EOF unchanged (E2 verbatim loops). */
+static inline __attribute__((always_inline)) void
 lzmesh_h1_l1_nowin(int32_t *head, int32_t *prev,
                    const uint8_t *src, size_t size, size_t span_lo,
                    size_t end, unsigned hb);
@@ -16087,16 +16159,17 @@ static size_t lzmesh_g1_emit(uint8_t *dst, size_t dst_capacity,
         if (mode[s] != 2u)
             continue;
         for (i = 0u; i < 11u; i++)
-            lzmesh_u35_acc_put(&uacc[0], &pos[0],
-                               h[s].mlens[i], 3u);
-        lzmesh_u35_acc_put(&uacc[0], &pos[0], h[s].bm, 32u);
+            lzmesh_u35_acc_put_fast(&uacc[0], &pos[0],
+                                    h[s].mlens[i], 3u);
+        lzmesh_u35_acc_put_fast(&uacc[0], &pos[0], h[s].bm, 32u);
         for (i = 0u; i < h[s].used; i++)
-            lzmesh_u35_acc_put(&uacc[i & 7u], &pos[i & 7u],
-                               h[s].mcodes[h[s].vals[i]],
-                               h[s].mlens[h[s].vals[i]]);
+            lzmesh_u35_acc_put_fast(&uacc[i & 7u], &pos[i & 7u],
+                                    h[s].mcodes[h[s].vals[i]],
+                                    h[s].mlens[h[s].vals[i]]);
         for (i = 0u; i < strn[s]; i++) {
-            lzmesh_u35_acc_put(&uacc[i & 7u], &pos[i & 7u],
-                               h[s].codes[sp[i]], h[s].lens[sp[i]]);
+            lzmesh_u35_acc_put_fast(&uacc[i & 7u], &pos[i & 7u],
+                                    h[s].codes[sp[i]],
+                                    h[s].lens[sp[i]]);
             /* P16-PACK T2b: lastL-direct (store deleted; computed below). */
         }
     }
@@ -17675,16 +17748,18 @@ static size_t p16_huf_emit(uint8_t *dst, size_t dst_capacity,
         if (mode[s] != 2u)
             continue;
         for (i = 0u; i < 11u; i++)
-            lzmesh_u35_acc_put(&uacc[0], &pos[0],
-                               h[s].mlens[i], 3u);
-        lzmesh_u35_acc_put(&uacc[0], &pos[0], h[s].bm, 32u);
+            lzmesh_u35_acc_put_fast(&uacc[0], &pos[0],
+                                    h[s].mlens[i], 3u);
+        lzmesh_u35_acc_put_fast(&uacc[0], &pos[0], h[s].bm, 32u);
         for (i = 0u; i < h[s].used; i++)
-            lzmesh_u35_acc_put(&uacc[i & 7u], &pos[i & 7u],
-                               h[s].mcodes[h[s].vals[i]],
-                               h[s].mlens[h[s].vals[i]]);
+            lzmesh_u35_acc_put_fast(&uacc[i & 7u], &pos[i & 7u],
+                                    h[s].mcodes[h[s].vals[i]],
+                                    h[s].mlens[h[s].vals[i]]);
         for (i = 0u; i < strn[s]; i++) {
-            lzmesh_u35_acc_put(&uacc[i & 7u], &pos[i & 7u],
-                               h[s].codes[sp[i]], h[s].lens[sp[i]]);
+            /* R9-TEXT1-E1: hottest put site (~77k calls/rep text-L1). */
+            lzmesh_u35_acc_put_fast(&uacc[i & 7u], &pos[i & 7u],
+                                    h[s].codes[sp[i]],
+                                    h[s].lens[sp[i]]);
             /* P16-PACK T2b: lastL-direct (store deleted; computed below). */
         }
     }
@@ -17731,7 +17806,9 @@ static size_t p16_huf_emit(uint8_t *dst, size_t dst_capacity,
             }
             kk = slot % 8u;
             /* P2-bitio: identical bit-OR via u35_put (was inline loop). */
-            lzmesh_u35_put(dst + bo + startb[kk], &pos[kk], suf, sb);
+            /* R9-TEXT1-E2: sole hot site (34.5k calls/rep text-L1). */
+            lzmesh_u35_put_fast(dst + bo + startb[kk], &pos[kk], suf,
+                                sb);
             slot++;
         }
     }
@@ -19546,7 +19623,33 @@ lzmesh_r6_l1_mx_r0(const uint8_t *src, size_t size, size_t pos,
         if (!lzmesh_mf_head_eq_r0(w8, src + qq, LZMESH_S2_MXHEAD))
             return 0; /* D3 shadow: non-verifying blocks older */
         dist = (uint32_t)(pos - qq);
-        ln = lzmesh_u37_extend(src, size, pos, qq, LZMESH_S2_MXHEAD);
+        /* R9-TEXT1-E6: scalar extend pre-check (L1-only leg): 6B
+         * heq-verified above; when pos+14<=size (one predictable
+         * guard; proves qq+14<=size too since qq<pos via the stale
+         * break above), the next 8B decide inline: xor+ctz resolves
+         * ln 6..13 with no extend call (LE ctz = first differing
+         * byte; census text-L1: 80.8% of extends <=8, 99.8% <=14).
+         * Equal-8B (ln>=14) or tail falls to stock extend (need 14
+         * when 6..13 proven equal = same total). Exact: same ln the
+         * stock extend-from-6 computes; R7-D2 short/loss deletion
+         * covers ln>=6 identically. */
+        if (pos + 14u <= size) {
+            uint64_t xa, xb;
+            memcpy(&xa, src + pos + 6u, 8);
+            memcpy(&xb, src + qq + 6u, 8);
+            xa ^= xb;
+            if (xa != 0u) {
+                ln = 6u + (uint32_t)((unsigned)__builtin_ctzll(xa)
+                                     >> 3);
+                *blen = ln;
+                *bdist = dist;
+                return 1;
+            }
+            ln = lzmesh_u37_extend(src, size, pos, qq, 14u);
+        } else {
+            ln = lzmesh_u37_extend(src, size, pos, qq,
+                                   LZMESH_S2_MXHEAD);
+        }
         /* R7-D2: short/loss legs deleted (dead: ANSWER-r6-mix1-1
          * short=0 loss=0 over 6.57M queries; noshortloss variant 0
          * DIVs/14476 + bench 3/3 IDENT). heq-verified extends are
@@ -19569,9 +19672,8 @@ lzmesh_r6_l1_mx_r0(const uint8_t *src, size_t size, size_t pos,
     return 0;
 }
 
-/* R8-MIX1NEUTRAL try-1: L1-nowin span loops, out-of-line (E2 code
- * verbatim: guard-hoist picks ng vs stock loop). */
-static __attribute__((noinline)) void
+/* R9-TEXT1-E3: force-inline (see fwd-decl note). Loops verbatim. */
+static inline __attribute__((always_inline)) void
 lzmesh_h1_l1_nowin(int32_t *head, int32_t *prev,
                    const uint8_t *src, size_t size, size_t span_lo,
                    size_t end, unsigned hb) {

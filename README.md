@@ -51,11 +51,11 @@ The 5 are byte-identical before and after the gating merge
 
 Throughput in MiB/s, medians over n=70 (10 gated runs × 7 reps,
 interleaved port-vs-Apple, same box back-to-back), MacBookAir M1,
-Apple clang 21 `-O2 -std=c11`, R8-ship tree
-(`port/src/lzmesh_enc.c` md5 155d258a,
-`port/src/lzmesh_dec.c` md5 5fa2dea5; tables + PGO below still
-read the R7 matrix on the R6 SHIP — R8 absolutes refresh next
-matrix; R8 deltas in the paragraph below). Both
+Apple clang 21 `-O2 -std=c11`, R9-ship tree
+(`port/src/lzmesh_enc.c` md5 41ec58b7,
+`port/src/lzmesh_dec.c` md5 5fa2dea5; tables + PGO below read
+the R9 matrix on the R8 SHIP — R9 union absolutes refresh next
+matrix; R9 deltas in the paragraph below). Both
 sides in-process: port `bench/bench.c` vs Apple `bench/abench`
 (same harness, no fork+exec+pipe floor — R4's piped-Apple
 methodology is superseded; its tables are history below).
@@ -64,17 +64,17 @@ Encode, port / Apple:
 
 | corpus | L0 | L1 | L5 | L9 |
 |--------|----|----|----|----|
-| text-256k | 365.44 / 874.13 | 94.11 / 324.25 | 86.13 / 245.94 | 61.27 / 226.55 |
-| mixed-128k | 258.27 / 862.07 | 115.96 / 459.56 | 107.85 / 350.14 | 76.31 / 293.43 |
-| zeros-64k | 1524.39 / 1953.12 | 2976.19 / 5208.33 | 2976.19 / 5208.33 | 2976.19 / 892.86 |
+| text-256k | 346.42 / 874.13 | 103.52 / 324.68 | 95.71 / 246.06 | 77.08 / 226.65 |
+| mixed-128k | 257.73 / 862.07 | 135.28 / 461.25 | 117.48 / 348.68 | 96.08 / 296.91 |
+| zeros-64k | 1524.39 / 2016.13 | 2976.19 / 5208.33 | 2976.19 / 5208.33 | 2976.19 / 919.12 |
 
 Decode, port / Apple (each side decodes its own bytes):
 
 | corpus | L0 | L1 | L5 | L9 |
 |--------|----|----|----|----|
-| text-256k | 1278.78 / 2059.32 | 417.01 / 1404.49 | 428.08 / 1524.39 | 430.29 / 1533.74 |
-| mixed-128k | 1237.62 / 2314.81 | 822.37 / 2450.98 | 925.93 / 2659.57 | 892.86 / 2403.85 |
-| zeros-64k | 62500.00 / 31250.00 | 31250.00 / 5681.82 | 31250.00 / 5681.82 | 31250.00 / 5681.82 |
+| text-256k | 1204.09 / 2109.74 | 417.36 / 1408.46 | 428.08 / 1515.15 | 430.29 / 1543.21 |
+| mixed-128k | 1237.62 / 2314.81 | 822.37 / 2450.98 | 929.38 / 2659.57 | 892.86 / 2403.85 |
+| zeros-64k | 62500.00 / 31250.00 | 62500.00 / 5681.82 | 62500.00 / 5681.82 | 31250.00 / 5681.82 |
 
 R4 ships decode + a sliver of encode: decres lifts text dec
 L1/L5/L9 to 417.71/428.82/432.53 (Air-gated +15.3/+16.3/+16.0
@@ -120,17 +120,44 @@ mixed-L1 +7.4/+7.8 incl mirror, L5s OV-or-better x3). S23/S24
 closed. Evidence: `tmp/r8land/` (union) + `tmp/r8l9new/` +
 `tmp/r8mix1neutral/`.
 
+R9 folds a fresh 24-cell in-process matrix onto the R8 SHIP
+(bench-only, code-identical): tables above now read R9 absolutes
+(n=70, MacBookAir, load1 1.15–1.42, 23 SEPARATED / 1 OVERLAP),
+re-confirming all 6 R8 ships — bands disjoint vs the R7 ranking
+(mixed L1 enc 135.28, text L1 enc 103.52, mixed L5 enc 117.48,
+text L5 enc 95.71, mixed L9 enc 96.08, text L9 enc 77.08; gaps
+−70.7/−68.1/−66.3/−61.1/−67.6/−66.0) — and PGO is re-measured
+below (9SEP/15OVER, same 9 cells). Worst deficits now: text L9
+dec −72.1%, text L5 dec −71.7%, mixed L1 enc −70.7% (all
+SEPARATED Apple). Full R9 tables: `tmp/matrix-r9/RANKING.md`.
+
+R9 ships the union of mix1 (F6-PRE fresh6 stack prefilter;
++23/−0) and text1 (E-stack: nowin-inline + L1-extend precheck +
+u35 put slow-split/inline; +109/−30; enc md5 41ec58b7): mixed L1
+enc +17.4% SEPARATED (n=25 gated A/B base-vs-union, 135.28→
+158.83) and text L1 enc +17.8% OVERLAP (102.88→121.24, run1-cold
+both sides; narrowed text1 mechanism is +8.0% SEPARATED clean on
+ab2, 103.18→111.46), 0 slower across 18 L1/L5/L9 cells.
+Gap-share vs R9 ranking: mixed L1 +5.1pp (−70.7→−65.6), text L1
++5.4pp (−68.1→−62.7). L1s stack independently again (time-add
++17.2 predicted vs +17.4 observed, res 0.2pp). L5-neutrality
+holds (L5s OV-or-better, mixed-L5 SEP-faster x2 narrowed). S25
+closed. Evidence: `tmp/r9land/` (union) + `tmp/r9mix1/` +
+`tmp/r9text1/` + `tmp/matrix-r9/`.
+
 Reading the gap (both sides in-process, no pipe floor):
 
 - Apple ahead on all 16 text/mixed codec cells (all SEPARATED,
-  gaps −46.5% to −74.8%): real port deficits, the optimization
-  frontier. Text L0 cells carry wide bands (medians 365.44 /
-  1278.78 vs R5 within 1.2pp — sprawl, not signal).
+  gaps −42.9% to −72.1%): real port deficits, the optimization
+  frontier. Text L0 cells carry wide bands (medians 346.42 /
+  1204.09 — sprawl, not signal; text L0 dec −5.0pp vs R7 is
+  wide-band overlap both runs, medians inside each other's bands).
 - Zeros cells are timer-floor artifacts (NO-CLAIM): enc medians
   flip between 2976/3125 quanta run to run; zeros L0 dec reads
-  n=68/70 (ns==0 samples dropped by the cmp filter) OVERLAP;
-  L1/L5/L9 dec +450.0% SEPARATED-port is pure quantum
-  artifact, not a speed claim.
+  n=67/70 (ns==0 samples dropped by the cmp filter) OVERLAP;
+  L1/L5/L9 dec +1000.0/+1000.0/+450.0% SEPARATED-port is pure
+  quantum artifact, not a speed claim (L1/L5 = median flip
+  31250→62500 inside the same band).
 
 Byte note: port enc == Apple enc on 9/12 cells; mixed-128k
 L1/L5/L9 differ (e01 34181@1152, same length; e05 32799v32796@2;
@@ -141,30 +168,33 @@ FRESH 18800 DIV=0 base-vs-ship direct, land-rerun; R7 matrix
 re-verifies the same 9/12 IDENT + 3 mixed DIVs, DIV lines
 byte-identical x10 and == R5; R8 union FULL/HOLD/FRESH 18800
 DIV=0 + NOWIN0 12784/0 base-vs-union direct, land-rerun, pins
-12/12 on Air too). Sizes within 3 B,
+12/12 on Air too; R9 matrix re-verifies the same 9/12 IDENT +
+3 mixed DIVs (DIV lines byte-identical x10 and == R7) and R9
+union FULL/HOLD/FRESH 18800 DIV=0 base-vs-union direct,
+land-rerun, pins 18/18 on Air too). Sizes within 3 B,
 so dec-timing inputs are size-matched.
 
 PGO is opt-in and build-only (`make pgo`; the default build tree
 is untouched, no source change). Re-measured on this tree (Air,
-interleaved --ab, n=70, 9SEP/15OVER),
-text-256k: enc L1/L5/L9 +5.6/+3.0/+6.5%, dec L1
-+7.9% (mixed-enc L1/L5/L9
-+10.2/+3.0/+5.7%, see `tmp/matrix-r7/pgo/cmp-pgo.txt`; quoted cells
-SEPARATED; text-dec L5/L9 +2.6/+3.6% and mixed-dec
-L1/L5/L9 +2.7/+2.3/+0.4% OVERLAP are NO-CLAIM).
+interleaved --ab, n=70, 9SEP/15OVER, same 9 cells as R7),
+text-256k: enc L1/L5/L9 +10.4/+7.7/+6.4%, dec L1
++7.5% (mixed-enc L1/L5/L9
++11.0/+11.5/+9.1%, see `tmp/matrix-r9/pgo/cmp-pgo.txt`; quoted cells
+SEPARATED; text-dec L5/L9 +3.0/+2.6% and mixed-dec
+L1/L5/L9 +0.6/+0.0/−1.0% OVERLAP are NO-CLAIM).
 Caveats: 2 cells SEPARATED slower — text enc L0 −16.0%,
-mixed enc L0 −12.5% (same caveat as R4: −16.2/−13.1); text/mixed
-dec L0 +0.0/+0.0% OVERLAP
+mixed enc L0 −12.9% (same caveat as R4: −16.2/−13.1); text/mixed
+dec L0 −0.5/−1.0% OVERLAP
 (NO-CLAIM); zeros all OVERLAP (timer floor).
 Byte-identity holds
 under PGO: PGO-binary enc == normal enc 12/12.
 
 Sources: every cell traces to
-`tmp/matrix-r7/ev/cmp-matrix.txt` (bands + n +
+`tmp/matrix-r9/ev/cmp-matrix.txt` (bands + n +
 verdicts), reproducible byte-identically from `ev/matrix/`
-run TSVs; PGO from `tmp/matrix-r7/pgo/cmp-pgo.txt` + `gated-pgoab/`.
-Gate: load1 < 16, 0 refusals on all runs (matrix 1.06–1.44,
-pgoab 1.41–1.54), pin `taskpolicy-t0l0`.
+run TSVs; PGO from `tmp/matrix-r9/pgo/cmp-pgo.txt` + `gated-pgoab/`.
+Gate: load1 < 16, 0 refusals on all runs (matrix 1.15–1.42,
+pgoab 1.91–2.15), pin `taskpolicy-t0l0`.
 Method: `docs/PERF.md` + `bench/GATED-PROTOCOL.md`; Apple
 harness: in-process `bench/abench` (R4 piped-oracle tables
 superseded).
