@@ -1,0 +1,34 @@
+base: runs=5 load1 1.20-1.26 ncpu=8 pin=taskpolicy-t0l0 bin=./bench/bench17d20-base
+opt : runs=5 load1 1.20-1.26 ncpu=8 pin=taskpolicy-t0l0 bin=./bench/bench17d20-new
+base cells=24 opt cells=24
+--- text-256k.bin enc ---
+  L0: base 486.38 (480.59-488.28) opt 486.38 (481.14-488.28) uplift +0.0% n=35/35 OVERLAP
+  L1: base 139.28 (137.05-139.79) opt 139.43 (137.36-139.90) uplift +0.1% n=35/35 OVERLAP
+  L5: base 106.47 (105.84-106.84) opt 106.66 (105.89-107.07) uplift +0.2% n=35/35 OVERLAP
+  L9: base 82.54 (81.77-82.67) opt 87.47 (86.67-87.69) uplift +6.0% n=35/35 SEPARATED(opt faster)
+--- text-256k.bin dec ---
+  L0: base 1302.08 (1270.40-1302.08) opt 1295.34 (1256.28-1302.08) uplift -0.5% n=35/35 OVERLAP
+  L1: base 748.50 (722.54-757.58) opt 746.27 (721.29-756.66) uplift -0.3% n=35/35 OVERLAP
+  L5: base 728.86 (712.25-735.29) opt 730.99 (711.04-735.29) uplift +0.3% n=35/35 OVERLAP
+  L9: base 728.86 (711.04-739.64) opt 730.99 (713.06-739.64) uplift +0.3% n=35/35 OVERLAP
+--- mixed-128k.bin enc ---
+  L0: base 408.50 (383.44-412.54) opt 407.17 (383.44-412.54) uplift -0.3% n=35/35 OVERLAP
+  L1: base 174.09 (170.25-175.71) opt 175.32 (170.72-177.05) uplift +0.7% n=35/35 OVERLAP
+  L5: base 132.42 (130.40-133.55) opt 133.40 (131.86-134.06) uplift +0.7% n=35/35 OVERLAP
+  L9: base 105.22 (102.69-106.26) opt 107.67 (105.29-108.70) uplift +2.3% n=35/35 OVERLAP
+--- mixed-128k.bin dec ---
+  L0: base 1250.00 (1218.35-1250.00) opt 1237.62 (1213.59-1250.00) uplift -1.0% n=35/35 OVERLAP
+  L1: base 1106.19 (976.56-1157.41) opt 1106.19 (979.64-1157.41) uplift +0.0% n=35/35 OVERLAP
+  L5: base 1436.78 (1230.34-1506.02) opt 1388.89 (1225.49-1481.09) uplift -3.3% n=35/35 OVERLAP
+  L9: base 1288.66 (1126.13-1358.70) opt 1288.66 (1126.13-1358.70) uplift +0.0% n=35/35 OVERLAP
+--- zeros-64k.bin enc ---
+  L0: base 1524.39 (1524.39-1524.39) opt 1524.39 (1524.39-1524.39) uplift +0.0% n=35/35 OVERLAP
+  L1: base 2976.19 (2976.19-3125.00) opt 2976.19 (2976.19-3125.00) uplift +0.0% n=35/35 OVERLAP
+  L5: base 2976.19 (2976.19-3125.00) opt 3125.00 (2976.19-3125.00) uplift +5.0% n=35/35 OVERLAP
+  L9: base 3125.00 (2976.19-3125.00) opt 2976.19 (2976.19-3125.00) uplift -4.8% n=35/35 OVERLAP
+--- zeros-64k.bin dec ---
+  L0: base 62500.00 (62500.00-62500.00) opt 62500.00 (62500.00-62500.00) uplift +0.0% n=32/34 OVERLAP
+  L1: base 62500.00 (31250.00-62500.00) opt 62500.00 (31250.00-62500.00) uplift +0.0% n=35/35 OVERLAP
+  L5: base 62500.00 (31250.00-62500.00) opt 62500.00 (31250.00-62500.00) uplift +0.0% n=35/35 OVERLAP
+  L9: base 62500.00 (31250.00-62500.00) opt 62500.00 (31250.00-62500.00) uplift +0.0% n=35/35 OVERLAP
+verdicts: 1 SEPARATED, 23 OVERLAP

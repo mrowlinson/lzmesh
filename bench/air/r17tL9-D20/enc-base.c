@@ -13809,35 +13809,6 @@ static int lzmesh_f1_dbg_on(void) {
  * (caller declines). */
 static int lzmesh_ze01_l1cut_on(void);
 
-/* R17-TL9 YF-HELPER (outline, noinline): YF consumed-mark with
- * inlined wide stores for <=16B (99.8% of takes, avg 9B; C2) and
- * memset fallback. Outline so u37_parse codegen stays a single bl
- * (same shape as base's compiler-memset call): L1/L5-neutral.
- * Same bytes (overlap exact, no overrun); FULL proves. */
-__attribute__((noinline)) static void
-lzmesh_r17_yf_mark(unsigned char *d, size_t n) {
-    if (n <= 16u) {
-        if (n >= 8u) {
-            uint64_t o = 0x0101010101010101ull;
-            memcpy(d, &o, 8);
-            memcpy(d + n - 8u, &o, 8);
-        } else if (n >= 4u) {
-            uint32_t o4 = 0x01010101u;
-            memcpy(d, &o4, 4);
-            memcpy(d + n - 4u, &o4, 4);
-        } else if (n >= 2u) {
-            d[0] = 1u;
-            d[1] = 1u;
-            if (n == 3u)
-                d[2] = 1u;
-        } else {
-            d[0] = 1u;
-        }
-    } else {
-        memset(d, 1, n);
-    }
-}
-
 static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
                                int32_t *head, int32_t *prev,
                                uint32_t *big, uint32_t *small, unsigned hb,
@@ -14078,20 +14049,10 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
                                 size, hb, &k2q);
             /* T4: L9 peek drains (L3-shape; LANE-T4 s04-n257 take10). */
             if (level == 9 && r6_t4lag
-                && r6_t4pd) {
-                /* R17-TL9 DRAIN-PREFETCH: peek h1 line is L2-cold.
-                 * Piggybacked here (existing L9-only arm: ZERO new
-                 * L1/L5 branches): drain+direct+rep window ~65c. */
-                if (r6_u8 && pos + 9u <= size) {
-                    uint64_t r17_pw8 = lzmesh_wl_ld64(src + pos + 1u);
-                    uint32_t r17_ps1 = lzmesh_u2_h1(
-                        r17_pw8 & 0xFFFFFFFFFFFFFFull, hb);
-                    __builtin_prefetch((const void *)&big[r17_ps1], 0, 3);
-                }
+                && r6_t4pd)
                 lzmesh_t4_drain(head, prev, big, small, vis, src,
                                 size, hb, level, i5v, i5m, &i5md,
                                 &t4q);
-            }
             if (lzmesh_i5_on(level)) /* I5: h2/h3 only, no h1 */
                 lzmesh_i5_direct(big, small, src, size, pos, hb, 0u,
                                      &i5md, i5m, i5ts);
@@ -14685,12 +14646,12 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
              * lets direct/flood evaluate LIT-off/take-start legs). */
             if (i5ts != NULL && end < size)
                 i5ts[end] = 1u;
-            /* YF: consumed mark [m,end] closed (L9 source-gate).
-             * R17-TL9: outline helper (1 bl, base-identical shape). */
+            /* YF: consumed mark [m,end] closed (L9 source-gate). */
             if (level == 9 && i5md.ycon != NULL) {
+                size_t k;
                 size_t hi = (end < size) ? end : size - 1u;
-                if (hi >= m)
-                    lzmesh_r17_yf_mark(i5md.ycon + m, hi - m + 1u);
+                for (k = m; k <= hi; k++)
+                    i5md.ycon[k] = 1u;
             }
         }
         litrun = 0u;

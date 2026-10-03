@@ -340,6 +340,31 @@ is timing-only). PGO 6/18 7th straight 0-slower round
 touch 739.64 exact). Evidence: branch lanes (`lanes/r16-mL9`,
 `lanes/r16-tL9`) + drops + land re-runs `tmp/r16land/`.
 
+R17 ships D20 (YF-helper + drain-prefetch, enc c9f8cefd):
+text L9 enc +6.0% SEP (n=35, 1 SEP / 23 OV, 0 slower;
+82.54->87.47, bands separated, sizes 79169=79169; gap-share
++2.2pp vs R17 ranking). Take consumed-marks (99.8% <=16B,
+avg 9B) via a noinline outline helper (~11c vs ~33c
+memset-call; parse perturbation 1 bl, L1/L5-neutral) +
+peek-h1 prefetch piggybacked in the existing L9-only drain
+arm (0 new L1/L5 branches). Kills banked on the lane:
+STACK1 (L1/L5 slower), inline-YF shapes, D11, D18
+(prefetch-guard toxic), flood leg-skips (memo FORMAL).
+mL9 union HOLDs again (4/5 SEP flagship, 0 slower, banked
+0e5d9667; layout gate PASS 0/24/0, prize is CODE; drain-x-L1
+mechanism NAMED codegen-shape fetch, rule-2 amd #2; no
+in-wave lever). Fresh R17 24-cell matrix (pre-ship tip
+c5ed7082, n=70, 23 SEP / 1 OV, DIV md5 5d68b09c == R16):
+top-5 mixed L9 enc -64.6% / text L9 -63.6 / mixed L5 -62.3
+/ mixed L1 -62.3 / text L1 -57.2 (HOLD 2/2 UNCHANGED +
+22/22 UNMOVED). Memo Q/A 2/2 FORMAL: flood NO >=5 path
+(Q1 NO, Q2 SIMD-only, Q3 span OPEN) + memop-work
+superadditivity + spill-store delta. PGO 6/18 8th straight
+0-slower round; tL9d OV sliver persists (PGO +4.9, matrix
+touch 739.64 exact). Evidence: branch lanes (`lanes/r17-mL9`,
+`lanes/r17-tL9`, `lanes/r17-matrix`, `lanes/r17-memo`) +
+drops + land re-runs `tmp/r17land/`.
+
 Reading the gap (both sides in-process, no pipe floor):
 
 - Apple ahead on all 16 text/mixed codec cells (all SEPARATED,
