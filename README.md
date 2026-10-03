@@ -332,8 +332,8 @@ L1, union dominates runscan-only) + tL9 YF-MEMSET HOLD
 (0 SEP / 24 OV, flagship +0.0%: clang −O2 already emits
 the memset, −S delta guard-only; PMU branch+l1d no-cut;
 datum: −S fold-check gates Air). Gap-share vs R16 ranking:
-mixed L1 +3.3pp / mixed L5 +1.9 / text L1 +2.0 / text L9
-+0.3. Memo: T2+S4 autopsy rule-2 (split br/chain/memop
+mixed L1 +3.6pp / mixed L5 +2.1 / text L1 +2.0 / text L9
++0.4. Memo: T2+S4 autopsy rule-2 (split br/chain/memop
 before pricing) + l1x path+drain DEAD beds (interaction
 is timing-only). PGO 6/18 7th straight 0-slower round
 (text L1 +7.2 repriced); tL9d OV sliver persists (+6.4,
