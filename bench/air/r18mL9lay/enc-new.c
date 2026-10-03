@@ -13902,6 +13902,17 @@ lzmesh_r17_yf_mark(unsigned char *d, size_t n) {
     }
 }
 
+/* R18-ML9-LAYOUTPAD: code-layout perturbation control (NEVER CALLED;
+ * __attribute__((used)) forces .text emission so u37_parse and all
+ * following functions shift address; body is opaque-but-dead. If the
+ * H9 prize is code (not layout lottery), layout-pad == H9 on Air.) */
+static __attribute__((used)) unsigned long lzmesh_r18_layout_pad(unsigned long x) {
+    volatile unsigned long a = x + 0x9e3779b97f4a7c15UL;
+    unsigned long i, s = 0UL;
+    for (i = 0UL; i < 64UL; i++) { a ^= a << 13; a ^= a >> 7; a ^= a << 17; s += a; }
+    return s + (unsigned long)&a;
+}
+
 static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
                                int32_t *head, int32_t *prev,
                                uint32_t *big, uint32_t *small, unsigned hb,

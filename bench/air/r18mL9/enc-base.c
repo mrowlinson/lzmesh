@@ -1263,43 +1263,16 @@ size_t lzmesh_u23_emit(uint8_t *dst, size_t dst_capacity,
 int lzmesh_u27_want(const uint8_t *src, size_t size, int level);
 size_t lzmesh_u27_emit(uint8_t *dst, size_t dst_capacity,
                        const uint8_t *src, size_t size);
-/* R14-mL9 runscan fuse v2: u29/u30/u32 trail layouts each rescan run-starts
- * (3x O(n) + 175KB buf churn per p11 chain). One shared scan; layouts
- * pointer-share it (zero copy) or stock-scan on NULL. Scan loop is the
- * stock layout loop verbatim (same init/cond/body/cap), so buf/nb exact.
- * v1 memcpy: KILLED by PMU (miss_st +3.3% churn); v2 shares the pointer
- * (analyses never write buf: all buf[]= writers are scans). */
-typedef struct lzmesh_runs14 {
-    size_t buf[21846];
-    unsigned nb;
-} lzmesh_runs14_t;
-static void lzmesh_runs14_scan(const uint8_t *src, size_t size,
-                               lzmesh_runs14_t *r) {
-    size_t pos, q;
-    unsigned nb = 0u;
-    pos = 0u;
-    while (pos < size && nb < 21846u) {
-        r->buf[nb++] = pos;
-        q = pos + 1u;
-        while (q < size && src[q] == src[pos])
-            q++;
-        pos = q;
-    }
-    r->nb = nb;
-}
 /* u29 fwd decls (SHAPE-R-TRAIL trailing-short terminator; defined at end). */
-int lzmesh_u29_want(const uint8_t *src, size_t size, int level,
-                    const lzmesh_runs14_t *runs14);
+int lzmesh_u29_want(const uint8_t *src, size_t size, int level);
 size_t lzmesh_u29_emit(uint8_t *dst, size_t dst_capacity,
                        const uint8_t *src, size_t size);
 /* u30 fwd decls (SHAPE-R-TC1 short-live + trailing term; defined at end). */
-int lzmesh_u30_want(const uint8_t *src, size_t size, int level,
-                    const lzmesh_runs14_t *runs14);
+int lzmesh_u30_want(const uint8_t *src, size_t size, int level);
 size_t lzmesh_u30_emit(uint8_t *dst, size_t dst_capacity,
                        const uint8_t *src, size_t size);
 /* u32 fwd decls (SHAPE-R-TC2 r2-live + trailing term; defined at end). */
-int lzmesh_u32_want(const uint8_t *src, size_t size, int level,
-                    const lzmesh_runs14_t *runs14);
+int lzmesh_u32_want(const uint8_t *src, size_t size, int level);
 /* u33 fwd decls (SHAPE-E5 2-token concat-sequential; defined at end). */
 int lzmesh_u33_want(const uint8_t *src, size_t size, int level);
 size_t lzmesh_u33_emit(uint8_t *dst, size_t dst_capacity,
@@ -1676,11 +1649,11 @@ int lzmesh_u4_want_comp(const uint8_t *src, size_t size, int level,
             return 1; /* u23 SHAPE-R12B (frozen). */
         if (lzmesh_u27_want(src, size, level))
             return 1; /* u27 SHAPE-R12CD (frozen). */
-        if (lzmesh_u29_want(src, size, level, NULL))
+        if (lzmesh_u29_want(src, size, level))
             return 1; /* u29 SHAPE-R-TRAIL (frozen). */
-        if (lzmesh_u30_want(src, size, level, NULL))
+        if (lzmesh_u30_want(src, size, level))
             return 1; /* u30 SHAPE-R-TC1 (frozen). */
-        if (lzmesh_u32_want(src, size, level, NULL))
+        if (lzmesh_u32_want(src, size, level))
             return 1; /* u32 SHAPE-R-TC2 (frozen). */
         if (lzmesh_u33_want(src, size, level))
             return 1; /* u33 SHAPE-E5 (pack9). */
@@ -1894,16 +1867,12 @@ static int lzmesh_p11_arm(const uint8_t *src, size_t size, int level) {
             return P11_U23;
         if (lzmesh_u27_want(src, size, level))
             return P11_U27;
-        { /* R14-mL9 runscan fuse: one run scan feeds u29/u30/u32. */
-            lzmesh_runs14_t runs14;
-            lzmesh_runs14_scan(src, size, &runs14);
-            if (lzmesh_u29_want(src, size, level, &runs14))
-                return P11_U29;
-            if (lzmesh_u30_want(src, size, level, &runs14))
-                return P11_U30;
-            if (lzmesh_u32_want(src, size, level, &runs14))
-                return P11_U32;
-        }
+        if (lzmesh_u29_want(src, size, level))
+            return P11_U29;
+        if (lzmesh_u30_want(src, size, level))
+            return P11_U30;
+        if (lzmesh_u32_want(src, size, level))
+            return P11_U32;
         if (lzmesh_u33_want(src, size, level))
             return P11_U33;
         if (level == 5)
@@ -5052,8 +5021,7 @@ int lzmesh_u29_trail_layout(const uint8_t *src, size_t size,
                             uint32_t *tokc, uint32_t *litc,
                             uint32_t *lenC, uint32_t *lenB,
                             uint32_t *modes, uint32_t *bo,
-                            uint32_t *fo,
-                            const lzmesh_runs14_t *runs14) {
+                            uint32_t *fo) {
     unsigned kk, nl, e, t;
     size_t suf, R;
     uint32_t live_lc, lit_c, tok_c, len_c, lenb, tokb, litb;
@@ -5062,8 +5030,7 @@ int lzmesh_u29_trail_layout(const uint8_t *src, size_t size,
     uint8_t first_len, first_tok, first_lit, term_tok;
     int have_llen, have_tok, have_lit;
     int len_eq, tok_eq, lit_eq;
-    size_t buf_local[21846];
-    const size_t *buf = buf_local;
+    size_t buf[21846];
     unsigned nb;
     size_t pos, q;
     if (src == NULL || size <= 1u || size > (size_t)LZMESH_U1_DS_MAX)
@@ -5071,23 +5038,15 @@ int lzmesh_u29_trail_layout(const uint8_t *src, size_t size,
     if (tokc == NULL || litc == NULL || lenC == NULL || lenB == NULL
         || modes == NULL || bo == NULL || fo == NULL)
         return 0;
-    /* R14-mL9 v2: shared runscan (pointer-share, zero copy) or stock
-     * scan on NULL. v1 memcpy churned 3x175KB (PMU: miss_st +3.3%);
-     * analyses never write buf (scan-only writers), so sharing is exact. */
-    if (runs14 != NULL) {
-        nb = runs14->nb;
-        buf = runs14->buf;
-    } else {
     /* P16-A: u19 rescan fuse (one scan, not two; see script). */
     nb = 0u;
     pos = 0u;
     while (pos < size && nb < 21846u) {
-        buf_local[nb++] = pos;
+        buf[nb++] = pos;
         q = pos + 1u;
         while (q < size && src[q] == src[pos])
             q++;
         pos = q;
-    }
     }
     kk = nb;
     if (kk < 2u)
@@ -5240,15 +5199,14 @@ int lzmesh_u29_trail_layout(const uint8_t *src, size_t size,
     return 1;
 }
 
-int lzmesh_u29_want(const uint8_t *src, size_t size, int level,
-                    const lzmesh_runs14_t *runs14) {
+int lzmesh_u29_want(const uint8_t *src, size_t size, int level) {
     uint32_t tokc, litc, lenC, lenB, modes, bo, fo;
     if (src == NULL || size <= 1u || size > (size_t)LZMESH_U1_DS_MAX)
         return 0;
     if (level != 1 && level != 5 && level != 9)
         return 0; /* L0 excluded: no finding (S5.7c) */
     if (!lzmesh_u29_trail_layout(src, size, &tokc, &litc, &lenC,
-                                 &lenB, &modes, &bo, &fo, runs14))
+                                 &lenB, &modes, &bo, &fo))
         return 0;
     { /* rep floor on shortest LIVE take (shape already validated). */
         size_t p = 0u;
@@ -5287,7 +5245,7 @@ size_t lzmesh_u29_emit(uint8_t *dst, size_t dst_capacity,
     if (dst == NULL || src == NULL)
         return 0;
     if (!lzmesh_u29_trail_layout(src, size, &tokc, &litc, &lenC,
-                                 &lenB, &modes, &bo, &fo, NULL))
+                                 &lenB, &modes, &bo, &fo))
         return 0;
     need = (size_t)fo + 10u + 1u;
     if (dst_capacity < need)
@@ -5482,8 +5440,7 @@ int lzmesh_u30_tc1_layout(const uint8_t *src, size_t size,
                           uint32_t *tokc, uint32_t *litc,
                           uint32_t *lenC, uint32_t *lenB,
                           uint32_t *modes, uint32_t *bo,
-                          uint32_t *fo,
-                          const lzmesh_runs14_t *runs14) {
+                          uint32_t *fo) {
     unsigned kk, nl, t;
     size_t suf, R;
     uint32_t live_lc, lit_c, tok_c, len_c, lenb, tokb, litb;
@@ -5492,8 +5449,7 @@ int lzmesh_u30_tc1_layout(const uint8_t *src, size_t size,
     uint8_t first_len, first_tok, first_lit, term_tok;
     int have_llen, have_tok, have_lit;
     int len_eq, tok_eq, lit_eq;
-    size_t buf_local[21846];
-    const size_t *buf = buf_local;
+    size_t buf[21846];
     unsigned nb;
     size_t pos, q;
     unsigned tc, nshort, pend, live_lits;
@@ -5503,23 +5459,15 @@ int lzmesh_u30_tc1_layout(const uint8_t *src, size_t size,
     if (tokc == NULL || litc == NULL || lenC == NULL || lenB == NULL
         || modes == NULL || bo == NULL || fo == NULL)
         return 0;
-    /* R14-mL9 v2: shared runscan (pointer-share, zero copy) or stock
-     * scan on NULL. v1 memcpy churned 3x175KB (PMU: miss_st +3.3%);
-     * analyses never write buf (scan-only writers), so sharing is exact. */
-    if (runs14 != NULL) {
-        nb = runs14->nb;
-        buf = runs14->buf;
-    } else {
     /* P16-A: u19 rescan fuse (one scan, not two; see script). */
     nb = 0u;
     pos = 0u;
     while (pos < size && nb < 21846u) {
-        buf_local[nb++] = pos;
+        buf[nb++] = pos;
         q = pos + 1u;
         while (q < size && src[q] == src[pos])
             q++;
         pos = q;
-    }
     }
     kk = nb;
     if (kk < 2u)
@@ -5696,8 +5644,7 @@ int lzmesh_u30_tc1_layout(const uint8_t *src, size_t size,
     return 1;
 }
 
-int lzmesh_u30_want(const uint8_t *src, size_t size, int level,
-                    const lzmesh_runs14_t *runs14) {
+int lzmesh_u30_want(const uint8_t *src, size_t size, int level) {
     uint32_t tokc, litc, lenC, lenB, modes, bo, fo;
     if (src == NULL || size <= 1u || size > (size_t)LZMESH_U1_DS_MAX)
         return 0;
@@ -5714,7 +5661,7 @@ int lzmesh_u30_want(const uint8_t *src, size_t size, int level,
     if (level == 1)
         return 0;
     if (!lzmesh_u30_tc1_layout(src, size, &tokc, &litc, &lenC,
-                               &lenB, &modes, &bo, &fo, runs14))
+                               &lenB, &modes, &bo, &fo))
         return 0;
     { /* rep floor on shortest LONG live take (u21 rule). */
         size_t buf[21846];
@@ -5779,7 +5726,7 @@ size_t lzmesh_u30_emit(uint8_t *dst, size_t dst_capacity,
     if (dst == NULL || src == NULL)
         return 0;
     if (!lzmesh_u30_tc1_layout(src, size, &tokc, &litc, &lenC,
-                               &lenB, &modes, &bo, &fo, NULL))
+                               &lenB, &modes, &bo, &fo))
         return 0;
     need = (size_t)fo + 10u + 1u;
     if (dst_capacity < need)
@@ -6004,8 +5951,7 @@ int lzmesh_u32_tc2_layout(const uint8_t *src, size_t size,
                           uint32_t *tokc, uint32_t *litc,
                           uint32_t *lenC, uint32_t *lenB,
                           uint32_t *modes, uint32_t *bo,
-                          uint32_t *fo,
-                          const lzmesh_runs14_t *runs14) {
+                          uint32_t *fo) {
     unsigned kk, nl, t;
     size_t suf, R;
     uint32_t live_lc, lit_c, tok_c, len_c, lenb, tokb, litb;
@@ -6014,8 +5960,7 @@ int lzmesh_u32_tc2_layout(const uint8_t *src, size_t size,
     uint8_t first_len, first_tok, first_lit, term_tok;
     int have_llen, have_tok, have_lit;
     int len_eq, tok_eq, lit_eq;
-    size_t buf_local[21846];
-    const size_t *buf = buf_local;
+    size_t buf[21846];
     unsigned nb;
     size_t pos, q;
     unsigned tc, nshort, n2, pend, live_lits;
@@ -6025,23 +5970,15 @@ int lzmesh_u32_tc2_layout(const uint8_t *src, size_t size,
     if (tokc == NULL || litc == NULL || lenC == NULL || lenB == NULL
         || modes == NULL || bo == NULL || fo == NULL)
         return 0;
-    /* R14-mL9 v2: shared runscan (pointer-share, zero copy) or stock
-     * scan on NULL. v1 memcpy churned 3x175KB (PMU: miss_st +3.3%);
-     * analyses never write buf (scan-only writers), so sharing is exact. */
-    if (runs14 != NULL) {
-        nb = runs14->nb;
-        buf = runs14->buf;
-    } else {
     /* P16-A: u19 rescan fuse (one scan, not two; see script). */
     nb = 0u;
     pos = 0u;
     while (pos < size && nb < 21846u) {
-        buf_local[nb++] = pos;
+        buf[nb++] = pos;
         q = pos + 1u;
         while (q < size && src[q] == src[pos])
             q++;
         pos = q;
-    }
     }
     kk = nb;
     if (kk < 2u)
@@ -6242,15 +6179,14 @@ int lzmesh_u32_tc2_layout(const uint8_t *src, size_t size,
     return 1;
 }
 
-int lzmesh_u32_want(const uint8_t *src, size_t size, int level,
-                    const lzmesh_runs14_t *runs14) {
+int lzmesh_u32_want(const uint8_t *src, size_t size, int level) {
     uint32_t tokc, litc, lenC, lenB, modes, bo, fo;
     if (src == NULL || size <= 1u || size > (size_t)LZMESH_U1_DS_MAX)
         return 0;
     if (level != 1 && level != 5 && level != 9)
         return 0; /* L0 excluded: no finding (S5.7c) */
     if (!lzmesh_u32_tc2_layout(src, size, &tokc, &litc, &lenC,
-                               &lenB, &modes, &bo, &fo, runs14))
+                               &lenB, &modes, &bo, &fo))
         return 0;
     { /* rep floor on shortest LONG live take (u21 rule). */
         size_t buf[21846];
@@ -6315,7 +6251,7 @@ size_t lzmesh_u32_emit(uint8_t *dst, size_t dst_capacity,
     if (dst == NULL || src == NULL)
         return 0;
     if (!lzmesh_u32_tc2_layout(src, size, &tokc, &litc, &lenC,
-                               &lenB, &modes, &bo, &fo, NULL))
+                               &lenB, &modes, &bo, &fo))
         return 0;
     need = (size_t)fo + 10u + 1u;
     if (dst_capacity < need)
@@ -14141,11 +14077,6 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
                 lzmesh_k2_drain(head, prev, big, small, vis, src,
                                 size, hb, &k2q);
             /* T4: L9 peek drains (L3-shape; LANE-T4 s04-n257 take10). */
-            /* R15-ML9-DRAIN: skip empty drain (n==0 <=> body is flag
-             * 1->0 + n=0 stores only, unobservable single-threaded;
-             * memo ANSWER-r15-mL9-1-ADD1: 79% empty mL9, IDENT 6/6).
-             * R18 merge: D20 prefetch verbatim (outer arm untouched);
-             * diet gates the drain call only (both ships preserved). */
             if (level == 9 && r6_t4lag
                 && r6_t4pd) {
                 /* R17-TL9 DRAIN-PREFETCH: peek h1 line is L2-cold.
@@ -14157,10 +14088,9 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
                         r17_pw8 & 0xFFFFFFFFFFFFFFull, hb);
                     __builtin_prefetch((const void *)&big[r17_ps1], 0, 3);
                 }
-                if (t4q.n != 0u)
-                    lzmesh_t4_drain(head, prev, big, small, vis, src,
-                                    size, hb, level, i5v, i5m, &i5md,
-                                    &t4q);
+                lzmesh_t4_drain(head, prev, big, small, vis, src,
+                                size, hb, level, i5v, i5m, &i5md,
+                                &t4q);
             }
             if (lzmesh_i5_on(level)) /* I5: h2/h3 only, no h1 */
                 lzmesh_i5_direct(big, small, src, size, pos, hb, 0u,
@@ -14391,18 +14321,20 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
                 if (pos + step > size)
                     step = size - pos;
             } else {
-            if (lzmesh_i5_on(level)) {
-                /* R18-ML9 H9-SINK: S5 sunk here (L9-only arm; first,
-                 * order vs flood preserved; VRP folds level leg). */
+            /* I4 FIX-B: flush pending catch-up (skip-walk store
+             * IS a trigger: >=1 lit sees span per flushbed 8/8).
+             * K2: drains the FIFO (beds G/H). */
+            if (level == 5)
+                lzmesh_k2_drain(head, prev, big, small, vis, src,
+                                size, hb, &k2q);
             /* T4: L9 skip-walk DRAINs (LANE-T4: flood's pos0-guard
-                 * skips init slots, so clear loses queued writers there;
-                 * s11-min h2-3056 needs drained 188 over init 0). */
-                /* R15-ML9-DRAIN: skip empty drain (same proof as peek site). */
-                if (level == 9 && r6_t4lag
-                    && t4q.n != 0u)
-                    lzmesh_t4_drain(head, prev, big, small, vis, src,
-                                    size, hb, level, i5v, i5m, &i5md,
-                                    &t4q);
+             * skips init slots, so clear loses queued writers there;
+             * s11-min h2-3056 needs drained 188 over init 0). */
+            if (level == 9 && r6_t4lag)
+                lzmesh_t4_drain(head, prev, big, small, vis, src,
+                                size, hb, level, i5v, i5m, &i5md,
+                                &t4q);
+            if (lzmesh_i5_on(level)) {
                 /* I5: flood [fup,ins) h2/h3, direct h2/h3,
                  * skip-backfill h1+h2. Walk landing is visited. */
                 if (ins > i5_fup)
@@ -14421,14 +14353,6 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
                     lzmesh_i5_skipback(big, src, size, pos + 1u,
                                        pos + step, hb, &i5md);
             } else {
-                /* R18-ML9 H9-SINK: S4 sunk here (non-L9 arm; first,
-                 * order vs store_visit preserved). */
-            /* I4 FIX-B: flush pending catch-up (skip-walk store
-                 * IS a trigger: >=1 lit sees span per flushbed 8/8).
-                 * K2: drains the FIFO (beds G/H). */
-                if (level == 5)
-                    lzmesh_k2_drain(head, prev, big, small, vis, src,
-                                    size, hb, &k2q);
                 lzmesh_h1_store_visit(head, prev, big, small, src, size,
                                       pos, hb, level, stored);
                 if (pos + step > size)
@@ -14645,9 +14569,7 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
                  * mirrored from below (rep-only, append-time). */
                 lzmesh_t4_pend t4e;
                 int t4_o4_skip = 0;
-                /* R15-ML9-DRAIN: skip empty drain (same proof). */
-                if (!cis_rep
-                    && t4q.n != 0u)
+                if (!cis_rep)
                     lzmesh_t4_drain(head, prev, big, small, vis, src,
                                     size, hb, level, i5v, i5m, &i5md,
                                     &t4q);

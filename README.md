@@ -365,6 +365,28 @@ touch 739.64 exact). Evidence: branch lanes (`lanes/r17-mL9`,
 `lanes/r17-tL9`, `lanes/r17-matrix`, `lanes/r17-memo`) +
 drops + land re-runs `tmp/r17land/`.
 
+R18 ships H9-sink (union' + S4/S5 sunk into i5 arms, enc 3fec8aa3):
+mixed L9 enc +5.2% SEP (n=35, 3 SEP / 21 OV, 0 slower;
+108.23->113.84, bands separated, sizes 32708=32708; gap-share
++1.9pp R18-conv) + mixed L1 +6.3 / mixed L5 +5.1 SEP (gap-share
++2.4/+1.9pp). Sink kills 33k dead cross-level guard evals/rep
+(memo arcs EXACT) + VRP folds level legs; u37 br -14, bl flat,
+L5-neutral (union' alone NO-SHIP: tL5e -1.4 SEP-slower,
+diet-codegen-shape). Layout gate PASS (H9-vs-H9pad 0/24/0,
+prize is CODE). Costs (OV): tL1e -1.6 (codegen, watch).
+tL9 D21b HOLDs (S7-only guard +0.5 OV, 0 slower, banked
+65ad1f37; D22 prefetch + D24 rep-fusion KILLED+reverted).
+Fresh R18 24-cell matrix (D20 tip c9f8cefd, n=70, 23 SEP / 1 OV,
+DIV md5 5d68b09c == R17): top-5 mixed L9 enc -63.4% / mixed L1
+-62.3 / mixed L5 -61.9 / text L9 -61.5 (+2.1 ship) / text L1 -57.2
+(R17-SHIP CONFIRM 1/1 + HOLD 1/1 + 22/22 UNMOVED). Memo Q/A 1/1
+FORMAL: tL5e diet-codegen-shape attribution + H9 GREEN + span
+SUBSET flood both flagships; fusion order-proof Q carried.
+PGO 6/18 9th straight 0-slower round; tL9d OV sliver persists
+(PGO +5.5, no touch). Evidence: branch lanes (`lanes/r18-mL9`,
+`lanes/r18-tL9`, `lanes/r18-matrix`, `lanes/r18-memo`) +
+drops + land re-runs `tmp/r18land/`.
+
 Reading the gap (both sides in-process, no pipe floor):
 
 - Apple ahead on all 16 text/mixed codec cells (all SEPARATED,

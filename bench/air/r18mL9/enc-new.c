@@ -14391,18 +14391,22 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
                 if (pos + step > size)
                     step = size - pos;
             } else {
-            if (lzmesh_i5_on(level)) {
-                /* R18-ML9 H9-SINK: S5 sunk here (L9-only arm; first,
-                 * order vs flood preserved; VRP folds level leg). */
+            /* I4 FIX-B: flush pending catch-up (skip-walk store
+             * IS a trigger: >=1 lit sees span per flushbed 8/8).
+             * K2: drains the FIFO (beds G/H). */
+            if (level == 5)
+                lzmesh_k2_drain(head, prev, big, small, vis, src,
+                                size, hb, &k2q);
             /* T4: L9 skip-walk DRAINs (LANE-T4: flood's pos0-guard
-                 * skips init slots, so clear loses queued writers there;
-                 * s11-min h2-3056 needs drained 188 over init 0). */
-                /* R15-ML9-DRAIN: skip empty drain (same proof as peek site). */
-                if (level == 9 && r6_t4lag
-                    && t4q.n != 0u)
-                    lzmesh_t4_drain(head, prev, big, small, vis, src,
-                                    size, hb, level, i5v, i5m, &i5md,
-                                    &t4q);
+             * skips init slots, so clear loses queued writers there;
+             * s11-min h2-3056 needs drained 188 over init 0). */
+            /* R15-ML9-DRAIN: skip empty drain (same proof as peek site). */
+            if (level == 9 && r6_t4lag
+                && t4q.n != 0u)
+                lzmesh_t4_drain(head, prev, big, small, vis, src,
+                                size, hb, level, i5v, i5m, &i5md,
+                                &t4q);
+            if (lzmesh_i5_on(level)) {
                 /* I5: flood [fup,ins) h2/h3, direct h2/h3,
                  * skip-backfill h1+h2. Walk landing is visited. */
                 if (ins > i5_fup)
@@ -14421,14 +14425,6 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
                     lzmesh_i5_skipback(big, src, size, pos + 1u,
                                        pos + step, hb, &i5md);
             } else {
-                /* R18-ML9 H9-SINK: S4 sunk here (non-L9 arm; first,
-                 * order vs store_visit preserved). */
-            /* I4 FIX-B: flush pending catch-up (skip-walk store
-                 * IS a trigger: >=1 lit sees span per flushbed 8/8).
-                 * K2: drains the FIFO (beds G/H). */
-                if (level == 5)
-                    lzmesh_k2_drain(head, prev, big, small, vis, src,
-                                    size, hb, &k2q);
                 lzmesh_h1_store_visit(head, prev, big, small, src, size,
                                       pos, hb, level, stored);
                 if (pos + step > size)
