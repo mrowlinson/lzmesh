@@ -312,6 +312,34 @@ union re-measure mandatory on any future merge). Evidence:
 `tmp/r15tl1/` (gates + Air n35 + 57904-direct) +
 `port/bench/air/r15tl1/` + land re-runs `tmp/r15land/`.
 
+R16 folds a fresh 24-cell matrix onto the R15 SHIP (tip:
+enc c5ed7082; R16 matrix n=70, MacBookAir, 23 SEPARATED /
+1 OVERLAP, 264/264 gates PASS, DIV md5 5d68b09c == R15),
+confirming R15-ship 3/3 CONFIRM (rel −0.1/+0.1/+0.0%,
+medians inside A/B-new) + HOLD 1/1 UNCHANGED (mL9e +0.6%
+rel, bands overlap) + 20/20 UNMOVED. Top-5 same cells,
+#1/#2 swap back: mixed L9 enc −64.7%, text L9 enc −63.7%,
+mixed L1 −62.3%, mixed L5 −62.1%, text L1 −57.1%
+(tL1e +3.4pp on the ship). Full R16 tables:
+`tmp/matrix-r16/RANKING.md`.
+
+R16 ships nothing (0/2 hunters below bar, both 0 slower
+n=35 gated A/B): mL9 union HOLD (tip + runscan-v2 + drain
+verbatim, banked 0e5d9667; 4 SEP flagship — mixed L1 +9.5
+/ mixed L5 +5.5 / text L1 +4.7 / text L9 +1.0 — one short
+of the >=5 bar; drain-x-L1 superadditive +5.9pp on mixed
+L1, union dominates runscan-only) + tL9 YF-MEMSET HOLD
+(0 SEP / 24 OV, flagship +0.0%: clang −O2 already emits
+the memset, −S delta guard-only; PMU branch+l1d no-cut;
+datum: −S fold-check gates Air). Gap-share vs R16 ranking:
+mixed L1 +3.3pp / mixed L5 +1.9 / text L1 +2.0 / text L9
++0.3. Memo: T2+S4 autopsy rule-2 (split br/chain/memop
+before pricing) + l1x path+drain DEAD beds (interaction
+is timing-only). PGO 6/18 7th straight 0-slower round
+(text L1 +7.2 repriced); tL9d OV sliver persists (+6.4,
+touch 739.64 exact). Evidence: branch lanes (`lanes/r16-mL9`,
+`lanes/r16-tL9`) + drops + land re-runs `tmp/r16land/`.
+
 Reading the gap (both sides in-process, no pipe floor):
 
 - Apple ahead on all 16 text/mixed codec cells (all SEPARATED,
