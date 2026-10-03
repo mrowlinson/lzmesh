@@ -387,6 +387,28 @@ PGO 6/18 9th straight 0-slower round; tL9d OV sliver persists
 `lanes/r18-tL9`, `lanes/r18-matrix`, `lanes/r18-memo`) +
 drops + land re-runs `tmp/r18land/`.
 
+R19 ships nothing (0 SHIP + 1 HOLD + 1 KILL, tree stays H9
+3fec8aa3): mL9 T-prefetch V1 HOLDs (Air n=35: 0 faster + 4
+SEP-slower tL1e -2.8 / tL5e -2.4 / mL1e -5.2 / mL5e -3.4,
+flagship mL9e -2.6% OV; diet-codegen-shape kill, banked
+7af283f81) + tL9 E3 drain-outline KILLed pre-Air (PMU RED:
+ld +6.24 / st +7.41 SEP, +37 memops/drain call traffic;
+R2-fuse vindicated, banked aba4109cf). Fresh R19 24-cell
+matrix (H9 tip, n=70, 23 SEP / 1 OV, DIV md5 5d68b09c ==
+R12-R18): top-5 mixed L9 enc -61.9% / text L9 -61.2 /
+mixed L5 -59.8 / mixed L1 -59.4 / text L1 -57.7
+(R18-SHIP CONFIRM 1/1 rel -0.9 gap-share +2.1pp + COGAIN
+2/2 + HOLD 1/1 + 20/20 UNMOVED; L5-neutral +0.0). Memo
+Q/A 4/4 FORMAL: fusion CLOSED all 3 ways (MOVE=NO lag0
+DIVs, elision PMU-killed, static NONE) + h1h2-identity
+named (hunter-killed) + H9-template EXHAUSTED (no second
+sink); endgame Q3 carried. PGO 5/19 10th straight
+0-slower round (mL9e SEP->OV on run9 transient, stands);
+tL9d OV sliver persists (PGO +6.0, no touch). Evidence:
+branch lanes (`lanes/r19-mL9`, `lanes/r19-tL9`,
+`lanes/r19-matrix`, `lanes/r19-memo`) + drops + land
+re-runs `tmp/r19land/`.
+
 Reading the gap (both sides in-process, no pipe floor):
 
 - Apple ahead on all 16 text/mixed codec cells (all SEPARATED,
