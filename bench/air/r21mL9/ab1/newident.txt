@@ -1,0 +1,12 @@
+text-256k e00 IDENT
+text-256k e01 IDENT
+text-256k e05 IDENT
+text-256k e09 IDENT
+mixed-128k e00 IDENT
+mixed-128k e01 IDENT
+mixed-128k e05 IDENT
+mixed-128k e09 IDENT
+zeros-64k e00 IDENT
+zeros-64k e01 IDENT
+zeros-64k e05 IDENT
+zeros-64k e09 IDENT

@@ -430,6 +430,24 @@ Evidence: branch lanes (`lanes/r20-mL9`, `lanes/r20-tL9`,
 `lanes/r20-matrix`, `lanes/r20-memo`) + drops + land
 re-runs `tmp/r20land/`.
 
+R21 ships nothing (0 SHIP + 1 HOLD + 1 HOLD/KILL, tree stays H9
+3fec8aa3): tL9 V3 separate-TU+attrs HOLDs (Air prescreen n=6 V3+PGO:
+tL9e +0.5% OV, 5 SEP all faster, 0 slower; T2-drag BINARY not graded,
+ceiling +4.3 < 5; banked 8ad7aabe/7470a305, NOT merged; dust exhausted)
++ mL9 HOLD + M1 KILL (Air prescreen n=6 M1-solo: mL9e -5.8% OV + mL5e
+-3.5% SEP-slower, diet-codegen-shape; datum 812a784d0, src reverted).
+Owner RULING-PGO-SHIP: PGO-ship ALLOWED (S37 policy closed; physics
+kills stand). Fresh R21 24-cell matrix (H9 tip, n=70, 23 SEP / 1 OV,
+DIV md5 5d68b09c == R12-R20): top-5 mixed L9 enc -62.0% / text L9 -61.3
+/ mixed L5 -60.0 / mixed L1 -59.6 / text L1 -57.6 (HOLD 1/1 rel -0.1
+gap-share -0.0pp + 23/23 UNMOVED; L5-neutral 3rd round). Memo Q/A 2/2
+FORMAL + 1 ADD1: TU DOWNGRADE (171/12) + interpose-T2 LIVE + MICRO-1
+CONFIRMED/EXHAUSTED + PGO-closer + v3killread. PGO 5/19 12th straight
+0-slower round (same 5 cells, deltas -0.1/+0.1; tL9d EXACT-touch OV 2nd
+round, mL9e OV tail 3rd round). Evidence: branch lanes (`lanes/r21-mL9`,
+`lanes/r21-tL9`, `lanes/r21-matrix`, `lanes/r21-memo`) + drops + land
+re-runs `tmp/r21land/`.
+
 Reading the gap (both sides in-process, no pipe floor):
 
 - Apple ahead on all 16 text/mixed codec cells (all SEPARATED,
