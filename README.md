@@ -467,6 +467,24 @@ round, mL9e OV 4th round). Evidence: branch lanes (`lanes/r22-mL9`,
 `lanes/r22-tL9`, `lanes/r22-matrix`, `lanes/r22-memo`) + drops + land
 re-runs `tmp/r22land/`.
 
+R23 ships tL9d D1P4+PGO (1 SHIP + 1 HOLD, dec 0dae2df4):
+decode-only D1 huffman-build package + P4 replay lit-0 skip, Air gate
+n=35 tL9d +23.8% SEP (rel +23.8pts / gap-share +11.3pp, 6 SEP all
+faster, 0 slower, laypad 0/24; PGO-alone +6.0 + code ~+17
+super-additive; tL0e -1.1 drop-1 secondary is PGO-inherited, flagged)
++ mL9 07700a11+T0-PGO HOLDs (gate +4.4/+4.3 SEP double short; M2
+KILLED -2.6 PGO-layout + T3 KILLED dominated; banked, src NOT merged).
+Fresh R23 24-cell matrix (H9 tip, n=70, 23 SEP / 1 OV, DIV md5
+5d68b09c == R12-R22): top-5 mixed L9 enc -62.1% / text L9 -61.3 /
+mixed L5 -60.0 / mixed L1 -59.7 / text L1 -57.6 (HOLD 1/1 + 23/23
+UNMOVED; L5-neutral 5th round). Memo Q/A 1/1 FORMAL+ADD1: warmup-climb
+mechanism (alloc/page/ctx DEAD) + H9 decode census EXACT + PGO T0/T3
+static. Drop-rep1 methodology BLESSED prospective-only (pre-registered
+re-measure delivered; retro opposed). PGO 6/18 14th straight 0-slower
+round (tL9d +6.0 resolved, mL9e OV 5th round). Evidence: branch lanes
+(`lanes/r23-mL9`, `lanes/r23-tL9d`, `lanes/r23-matrix`, `lanes/r23-memo`)
++ drops + land re-runs `tmp/r23land/`.
+
 Reading the gap (both sides in-process, no pipe floor):
 
 - Apple ahead on all 16 text/mixed codec cells (all SEPARATED,

@@ -1,0 +1,5 @@
+d8fd41221e7a090c6c23aa45e5d43cb9
+# land-supplied pin (r23-land): hunter LANE cited d8fd4122 prescreen==gate;
+# land re-trained T0 recipe locally (Air-matched basenames dec-d1p4.c +
+# lzmesh_enc.c) and reproduced this md5 exactly => deterministic trains
+# verified first-hand. applies to ab-gate + ab1 (same train recipe/inputs).

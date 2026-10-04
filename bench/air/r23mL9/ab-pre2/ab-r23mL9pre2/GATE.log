@@ -1,0 +1,18 @@
+gated-bench start mode=AB-interleaved runs=2 reps=3 levels=all ncpu=8 pin=taskpolicy-t0l0 base=/Users/meganrowlinson/Projects/LZMESH-jobs/port/bench/air/r23mL9/ab-pre/bench-base new=/Users/meganrowlinson/Projects/LZMESH-jobs/port/bench/air/r23mL9/ab-pre/bench-pgo force=0 fakeload=none
+WARMUP start mode=AB-interleaved base+new pair (discarded)
+run W0: gate PASS load1=1.52 (thr 2x8=8*2) pin=taskpolicy-t0l0
+run W0: bench exit=0 rows=72
+WARMUP base rc=0 (discarded)
+run W0: gate PASS load1=1.52 (thr 2x8=8*2) pin=taskpolicy-t0l0
+run W0: bench exit=0 rows=72
+WARMUP new rc=0 (discarded)
+WARMUP done (discarded)
+run 1: gate PASS load1=1.52 (thr 2x8=8*2) pin=taskpolicy-t0l0
+run 1: bench exit=0 rows=72
+run 1: gate PASS load1=1.52 (thr 2x8=8*2) pin=taskpolicy-t0l0
+run 1: bench exit=0 rows=72
+run 2: gate PASS load1=1.52 (thr 2x8=8*2) pin=taskpolicy-t0l0
+run 2: bench exit=0 rows=72
+run 2: gate PASS load1=1.52 (thr 2x8=8*2) pin=taskpolicy-t0l0
+run 2: bench exit=0 rows=72
+gated-bench DONE runs=2

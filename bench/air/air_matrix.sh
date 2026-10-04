@@ -42,12 +42,12 @@ uptime
 sysctl -n hw.ncpu 2>/dev/null
 sw_vers -productVersion 2>/dev/null
 cc --version 2>/dev/null | head -n 1
-echo "EXPECT_SHA=2c5fc993fab19d7f3379755344d10ff5349c9b69 (lanes/lane-4 R21-land base; r22-matrix)"
+echo "EXPECT_SHA=9a4c6fc0c954b6bce79498241cc945ce62f56d09 (lanes/lane-4 R22-land base; r23-matrix)"
 echo "EXPECT_ENC_MD5=3fec8aa3274f901b1372be85936a77a2"
-echo "EXPECT_DEC_MD5=db4ae6b77fd721301a7c46c4cb677a2c"
+echo "EXPECT_DEC_MD5=0dae2df417bd56d06dc30f94fa0ebd31 (R23 tL9d-D1P4 ship; r23-land)"
 md5 "$P/src/lzmesh_enc.c" "$P/src/lzmesh_dec.c"
 [ "$(md5 -q "$P/src/lzmesh_enc.c")" = "3fec8aa3274f901b1372be85936a77a2" ] || { echo TREE-PIN-FAIL-HALT-enc; exit 1; }
-[ "$(md5 -q "$P/src/lzmesh_dec.c")" = "db4ae6b77fd721301a7c46c4cb677a2c" ] || { echo TREE-PIN-FAIL-HALT-dec; exit 1; }
+[ "$(md5 -q "$P/src/lzmesh_dec.c")" = "0dae2df417bd56d06dc30f94fa0ebd31" ] || { echo TREE-PIN-FAIL-HALT-dec; exit 1; }
 echo TREE-PIN-OK
 
 echo "== corpus pins =="

@@ -1148,16 +1148,14 @@ void lz_u6h_free_ss(struct lz_u3_ss *ss) {
     }
 }
 
-/* Reverse low-L bits of code (canonical MSB-first -> LSB-first pattern).
- * R23-TL9D-D1: branchless 16-bit reverse + shift (loop was len iters of
- * shift/or; exhaustive bed-proof: all 2046 (code,len) pairs == loop). */
+/* Reverse low-L bits of code (canonical MSB-first -> LSB-first pattern). */
 static uint32_t lz_u6h_rev(uint32_t code, uint32_t len) {
-    uint32_t x = code & (uint32_t)0xFFFF;
-    x = ((x >> 1) & (uint32_t)0x5555) | ((x & (uint32_t)0x5555) << 1);
-    x = ((x >> 2) & (uint32_t)0x3333) | ((x & (uint32_t)0x3333) << 2);
-    x = ((x >> 4) & (uint32_t)0x0F0F) | ((x & (uint32_t)0x0F0F) << 4);
-    x = ((x >> 8) & (uint32_t)0x00FF) | ((x & (uint32_t)0x00FF) << 8);
-    return x >> (16 - len);
+    uint32_t r = (uint32_t)0;
+    uint32_t k;
+    for (k = (uint32_t)0; k < len; k++) {
+        r |= ((code >> k) & (uint32_t)1) << (len - (uint32_t)1 - k);
+    }
+    return r;
 }
 
 /* P6-symphoist: lz_u6h_peek folded into lz_u6h_decode_sym_fast below
@@ -1263,46 +1261,29 @@ static int lz_u6h_build(const uint8_t *lengths, uint32_t nsym, uint32_t maxlen,
     if (lz_u2_kraft1024_ok(sum) != LZ_U2_OK) {
         return LZ_U3_FAIL;
     }
-    /* R23-TL9D-D1: counting scatter. first[len] = canonical first code
-     * per length (standard closed form); syms iterate once in order, so
-     * each sym gets first[l]+prior-count[l] == the (len,sym)-order code
-     * the double loop assigned. Same codes, same tables, byte-identical.
-     * Over-subscribe + collision checks DROPPED: Kraft==1024 verified
-     * above => complete code => canonical assignment never
-     * over-subscribes, every cell written exactly once (same theorem the
-     * old code's "unreachable" comments cited). Same FAILs (Kraft gate
-     * unchanged), fewer executions: 2x256 passes, no per-cell branch. */
-    {
-        uint32_t first[11];
-        uint32_t ncount[11];
-        for (i = (uint32_t)0; i < (uint32_t)11; i++) {
-            ncount[i] = (uint32_t)0;
-        }
+    code = (uint32_t)0;
+    for (len = (uint32_t)1; len <= maxlen; len++) {
         for (s = (uint32_t)0; s < nsym; s++) {
-            ncount[lens[s]]++;
-        }
-        code = (uint32_t)0;
-        for (len = (uint32_t)1; len <= maxlen; len++) {
-            first[len] = code;
-            code = (code + ncount[len]) << 1;
-        }
-        for (s = (uint32_t)0; s < nsym; s++) {
-            uint32_t l2 = (uint32_t)lens[s];
-            uint32_t c;
             uint32_t rev;
             uint32_t step;
             uint32_t idx;
-            if (l2 == (uint32_t)0) {
+            if ((uint32_t)lens[s] != len) {
                 continue;
             }
-            c = first[l2];
-            first[l2] = c + (uint32_t)1;
-            rev = lz_u6h_rev(c, l2);
-            step = (uint32_t)1 << l2;
-            for (idx = rev; idx < tab_n; idx += step) {
-                tab[idx] = (uint16_t)((l2 << 8) | s);
+            if (code >= ((uint32_t)1 << len)) {
+                return LZ_U3_FAIL; /* over-subscribed (unreachable) */
             }
+            rev = lz_u6h_rev(code, len);
+            step = (uint32_t)1 << len;
+            for (idx = rev; idx < tab_n; idx += step) {
+                if (tab[idx] != (uint16_t)0) {
+                    return LZ_U3_FAIL; /* collision (unreachable) */
+                }
+                tab[idx] = (uint16_t)((len << 8) | s);
+            }
+            code++;
         }
+        code <<= 1;
     }
     return LZ_U3_OK;
 }
@@ -2578,59 +2559,47 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
             lit_f = ((uint32_t)t >> 6) & (uint32_t)3;
             sel = ((uint32_t)t >> 3) & (uint32_t)7;
             len_f = (uint32_t)t & (uint32_t)7;
-            /* (1) lit-len (short inline, escape calls out; same as generic).
-             * R23-TL9D-P4: lit_f==0 (82% text-L9) skips the lit block:
-             * run==0 => take==0, and both bounds checks are vacuous
-             * under the lit_used<=lit_n invariant (base: 1 gated by
-             * first_lit_ok+ss_byte / 0; step: take<=lit_n-lit_used
-             * checked every non-skip iter) + lit_n<=lit_bound (tok_n>=1
-             * by loop bound). lit_used/wblk += 0 no-ops. Same bytes,
-             * same FAILs (skip fires only when checks provably pass). */
-            if (lit_f == (uint32_t)0) {
-                run = (uint32_t)0;
-                take = (size_t)0;
+            /* (1) lit-len (short inline, escape calls out; same as generic). */
+            if (lit_f != (uint32_t)3) {
+                run = lit_f;
+                lok = LZ_U3_OK;
             } else {
-                if (lit_f != (uint32_t)3) {
-                    run = lit_f;
-                    lok = LZ_U3_OK;
-                } else {
-                    lok = lz_u3_lit_run(lit_f, &ss[1], &len_used, &run);
-                }
-                if (lz_u2_c16_ok(lok) != LZ_U2_OK) {
-                    return LZ_U3_FAIL;
-                }
-                /* (2) lit-copy (same bounds as generic; room checks dead:
-                 * wblk<ds<room here, take<=ds-wblk<room-wblk after clamp).
-                 * R10-TEXTDEC: wblk>ds fused into the top >=ds check; lit_n
-                 * single check (lit_used<=lit_n invariant: first-block
-                 * lit_used=1 gated by first_lit_ok+ss_byte, else 0; take
-                 * clamped every iter, so no size_t wrap). */
-                if ((size_t)lit_used + (size_t)run > lit_bound) {
-                    return LZ_U3_FAIL;
-                }
-                take = (size_t)run;
-                if (take > (size_t)ds - wblk) {
-                    take = (size_t)ds - wblk;
-                }
-                if (take > (size_t)lit_n - (size_t)lit_used) {
-                    return LZ_U3_FAIL;
-                }
-                if (take <= (size_t)3) {
-                    if (take != (size_t)0) {
-                        dst[w_tot + wblk] = lit_p[lit_used];
-                        if (take > (size_t)1) {
-                            dst[w_tot + wblk + (size_t)1] =
-                                lit_p[lit_used + (uint32_t)1];
-                            if (take > (size_t)2) {
-                                dst[w_tot + wblk + (size_t)2] =
-                                    lit_p[lit_used + (uint32_t)2];
-                            }
+                lok = lz_u3_lit_run(lit_f, &ss[1], &len_used, &run);
+            }
+            if (lz_u2_c16_ok(lok) != LZ_U2_OK) {
+                return LZ_U3_FAIL;
+            }
+            /* (2) lit-copy (same bounds as generic; room checks dead:
+             * wblk<ds<room here, take<=ds-wblk<room-wblk after clamp).
+             * R10-TEXTDEC: wblk>ds fused into the top >=ds check; lit_n
+             * single check (lit_used<=lit_n invariant: first-block
+             * lit_used=1 gated by first_lit_ok+ss_byte, else 0; take
+             * clamped every iter, so no size_t wrap). */
+            if ((size_t)lit_used + (size_t)run > lit_bound) {
+                return LZ_U3_FAIL;
+            }
+            take = (size_t)run;
+            if (take > (size_t)ds - wblk) {
+                take = (size_t)ds - wblk;
+            }
+            if (take > (size_t)lit_n - (size_t)lit_used) {
+                return LZ_U3_FAIL;
+            }
+            if (take <= (size_t)3) {
+                if (take != (size_t)0) {
+                    dst[w_tot + wblk] = lit_p[lit_used];
+                    if (take > (size_t)1) {
+                        dst[w_tot + wblk + (size_t)1] =
+                            lit_p[lit_used + (uint32_t)1];
+                        if (take > (size_t)2) {
+                            dst[w_tot + wblk + (size_t)2] =
+                                lit_p[lit_used + (uint32_t)2];
                         }
                     }
-                } else {
-                    memcpy(dst + w_tot + wblk, lit_p + lit_used, take);
                 }
-            } /* P4 else (lit_f != 0) */
+            } else {
+                memcpy(dst + w_tot + wblk, lit_p + lit_used, take);
+            }
             lit_used += (uint32_t)take;
             wblk += take;
             /* (3) dist-resolve (ptr-direct; lanes!=NULL by guard).

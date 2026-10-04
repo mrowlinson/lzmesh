@@ -1,0 +1,53 @@
+# gated-bench v1 2026-10-04T10:24:03Z
+# bin /Users/meganrowlinson/Projects/LZMESH-jobs/port/bench/air/r23mL9/ab-pre/bench-pgo
+# loadavg 1.97 1.39 1.25 ncpu 8 pin taskpolicy-t0l0
+# reps 3 levels 0159 run 2-of-2
+text-256k.bin	0	enc	262144	138269	521000
+text-256k.bin	0	enc	262144	138269	532000
+text-256k.bin	0	dec	138269	262144	199000
+text-256k.bin	0	dec	138269	262144	193000
+text-256k.bin	1	enc	262144	82232	1637000
+text-256k.bin	1	enc	262144	82232	1671000
+text-256k.bin	1	dec	82232	262144	345000
+text-256k.bin	1	dec	82232	262144	326000
+text-256k.bin	5	enc	262144	79704	2235000
+text-256k.bin	5	enc	262144	79704	2239000
+text-256k.bin	5	dec	79704	262144	341000
+text-256k.bin	5	dec	79704	262144	326000
+text-256k.bin	9	enc	262144	79169	2986000
+text-256k.bin	9	enc	262144	79169	2883000
+text-256k.bin	9	dec	79169	262144	348000
+text-256k.bin	9	dec	79169	262144	336000
+mixed-128k.bin	0	enc	131072	87875	330000
+mixed-128k.bin	0	enc	131072	87875	325000
+mixed-128k.bin	0	dec	87875	131072	106000
+mixed-128k.bin	0	dec	87875	131072	106000
+mixed-128k.bin	1	enc	131072	34181	651000
+mixed-128k.bin	1	enc	131072	34181	645000
+mixed-128k.bin	1	dec	34181	131072	118000
+mixed-128k.bin	1	dec	34181	131072	105000
+mixed-128k.bin	5	enc	131072	32799	858000
+mixed-128k.bin	5	enc	131072	32799	844000
+mixed-128k.bin	5	dec	32799	131072	92000
+mixed-128k.bin	5	dec	32799	131072	80000
+mixed-128k.bin	9	enc	131072	32708	1074000
+mixed-128k.bin	9	enc	131072	32708	1071000
+mixed-128k.bin	9	dec	32708	131072	99000
+mixed-128k.bin	9	dec	32708	131072	90000
+zeros-64k.bin	0	enc	65536	79	41000
+zeros-64k.bin	0	enc	65536	79	41000
+zeros-64k.bin	0	dec	79	65536	1000
+zeros-64k.bin	0	dec	79	65536	1000
+zeros-64k.bin	1	enc	65536	27	21000
+zeros-64k.bin	1	enc	65536	27	20000
+zeros-64k.bin	1	dec	27	65536	1000
+zeros-64k.bin	1	dec	27	65536	1000
+zeros-64k.bin	5	enc	65536	27	21000
+zeros-64k.bin	5	enc	65536	27	20000
+zeros-64k.bin	5	dec	27	65536	1000
+zeros-64k.bin	5	dec	27	65536	1000
+zeros-64k.bin	9	enc	65536	27	21000
+zeros-64k.bin	9	enc	65536	27	20000
+zeros-64k.bin	9	dec	27	65536	1000
+zeros-64k.bin	9	dec	27	65536	2000
+# extended-warmup drop-first-1 2026-10-04T10:24:03Z kept=48 dropped=24
