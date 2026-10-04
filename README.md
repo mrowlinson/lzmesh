@@ -448,6 +448,25 @@ round, mL9e OV tail 3rd round). Evidence: branch lanes (`lanes/r21-mL9`,
 `lanes/r21-tL9`, `lanes/r21-matrix`, `lanes/r21-memo`) + drops + land
 re-runs `tmp/r21land/`.
 
+R22 ships nothing (0 SHIP + 2 HOLDs, tree stays H9
+3fec8aa3): tL9 B1P2M3+PGO HOLDs (Air prescreen n=6 stack+PGO:
+tL9e +4.6% SEP decisive below-bar, 7 SEP all faster, 0 slower;
+stack +0.6 over PGO-alone; banked 07700a11, NOT merged; mblk/S1
+dust priced, profile diffuse) + mL9 M23 HOLD + T2D-leg KILL (Air
+prescreen n=6 stack +0.0 OV + D1 M23-solo +0.4 OV, 0 slower x2;
+T2D ~-4 guilty by elimination; drop-rep1 flip UNRULED; banked
+be2b624b, src == base). Fresh R22 24-cell matrix (H9 tip, n=70,
+23 SEP / 1 OV, DIV md5 5d68b09c == R12-R21): top-5 mixed L9 enc
+-62.2% / text L9 -61.3 / mixed L5 -59.8 / mixed L1 -59.6 / text L1
+-57.7 (HOLD 1/1 rel -0.0 gap-share -0.0pp + 23/23 UNMOVED;
+L5-neutral 4th round). Memo Q/A 3/3 FORMAL: T2C SOUND + probe-guards
+PROVEN-dead + M3 SOUND + drop-rep1 prospective-only + pgoflip (HOLDS)
++ interpose-composes + memset-ceiling-3.1. PGO 5/19 13th straight
+0-slower round (same 5 cells, deltas +0.0/+0.2; tL9d EXACT-touch OV 3rd
+round, mL9e OV 4th round). Evidence: branch lanes (`lanes/r22-mL9`,
+`lanes/r22-tL9`, `lanes/r22-matrix`, `lanes/r22-memo`) + drops + land
+re-runs `tmp/r22land/`.
+
 Reading the gap (both sides in-process, no pipe floor):
 
 - Apple ahead on all 16 text/mixed codec cells (all SEPARATED,

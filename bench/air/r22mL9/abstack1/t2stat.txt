@@ -1,0 +1,1 @@
+T2D hits=56 miss=35 freehit=89 freefall=0 retained=22375952
