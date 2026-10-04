@@ -505,6 +505,25 @@ straight 0-slower round (tL5d + mL9e NEW SEP). Evidence: branch lanes
 (`lanes/r24-mL9`, `lanes/r24-tL5d`, `lanes/r24-matrix`, `lanes/r24-memo`)
 + drops + land re-runs `tmp/r24land/`.
 
+R25 holds both flagships (0 SHIPs, 2 HOLDs, zero src delta, tree==tip):
+tL5d HOLD (B1B2a gate n=35 stack +3.3% OV / code +2.0% OV, 0 slower;
+rel +3.3pts / gap-share +1.8pp; P2-collider found+dropped 14/14 uniform
+-5.6; S4 sym KILLED ILP-bound; R1m CLOSED check1 load-bearing 16/16 +
+sidecar 48/48; banked 0c86de68, src NOT merged) + mL9 HOLD (B1reg
+V0-warmed n=35 mL9e +4.7% SEP DOUBLE-RED with mL0e -2.8 + tL0e -1.5
+PRIMARY vetos; P1 RED wrong-way -1.6 KILLED + P2a RED 0/24 null KILLED;
+banked, src reverted). Fresh R25 24-cell matrix (ship tip, n=70, 23 SEP
+/ 1 OV, DIV md5 5d68b09c == R12-R24): top-6 enc order identical (mL9e
+-62.3 #1 / tL9e -61.2 / mL5e -59.7 / mL1e -59.3 / tL1e -57.6 / tL5e
+-57.0; SHIP-CONFIRM tL5d in-band + HOLD reconfirm B1P2 + mL9e;
+L5-neutral 7th round). Memo Q/A 3/4 (mL9-1 closed x4 + tL5d-1 closed via
+sidecar + mL9-2 land-gated + r23-tL9d-1 late-formal; 9 drops). Land-gate
+answer 1/1 (Q-mL9-2: k-mid trigger failed, burn not authorized). PGO
+6/18 16th straight 0-slower round (mL9e SEP->OV on 0.04 noise).
+Evidence: branch lanes (`lanes/r25-mL9`, `lanes/r25-tL5d`,
+`lanes/r25-matrix`, `lanes/r25-memo`) + drops + land re-runs
+`tmp/r25land/`.
+
 Reading the gap (both sides in-process, no pipe floor):
 
 - Apple ahead on all 16 text/mixed codec cells (all SEPARATED,
