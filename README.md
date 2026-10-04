@@ -409,6 +409,27 @@ branch lanes (`lanes/r19-mL9`, `lanes/r19-tL9`,
 `lanes/r19-matrix`, `lanes/r19-memo`) + drops + land
 re-runs `tmp/r19land/`.
 
+R20 ships nothing (0 SHIP + 2 HOLD, tree stays H9
+3fec8aa3): tL9 T2-alloccache HOLDs (Air prescreen n=6 x2:
+tL9e +0.3/+0.8% OV, 0 SEP-slower both; PGO-interaction
+drag, ceiling +4.4 < 5; banked e4940491) + T1-genbit
+KILLed by warmth (SLC-cold 200-400us > 140us wall,
+P10-accepted restored) + mL9 no-vehicle HOLD (stack
+~2-3%, SIMD dead structurally, T1 tL9-owned). Fresh R20
+24-cell matrix (H9 tip, n=70, 23 SEP / 1 OV, DIV md5
+5d68b09c == R12-R19): top-5 mixed L9 enc -62.1% / text
+L9 -61.2 / mixed L5 -59.8 / mixed L1 -59.7 / text L1
+-57.8 (HOLD 1/1 rel -0.3 gap-share -0.1pp + KILL 1/1
+-0.0/-0.0pp + 22/22 UNMOVED; L5-neutral -0.1%). Memo
+Q/A 2/2 FORMAL: peek-mixed CLOSE + emit diffuse + SIMD
+KILL + T1 support/holes + lo-skip CLOSE (text-L9 DIV) +
+bestcall picked-over + Q1-emit PMU (split top, no micro
+>=0.5%). PGO 5/19 11th straight 0-slower round (same 5
+cells; tL9d EXACT-touch OV 739.64==739.64, watch R21).
+Evidence: branch lanes (`lanes/r20-mL9`, `lanes/r20-tL9`,
+`lanes/r20-matrix`, `lanes/r20-memo`) + drops + land
+re-runs `tmp/r20land/`.
+
 Reading the gap (both sides in-process, no pipe floor):
 
 - Apple ahead on all 16 text/mixed codec cells (all SEPARATED,
