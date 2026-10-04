@@ -485,6 +485,26 @@ round (tL9d +6.0 resolved, mL9e OV 5th round). Evidence: branch lanes
 (`lanes/r23-mL9`, `lanes/r23-tL9d`, `lanes/r23-matrix`, `lanes/r23-memo`)
 + drops + land re-runs `tmp/r23land/`.
 
+R24 ships tL5d pure-T0-PGO (1 SHIP + 2 HOLDs, zero src delta, tree==tip):
+no code change — T0 PGO on the R23 ship tip, Air gate n=35 tL5d +8.2%
+SEP (rel +8.2pts / gap-share +4.5pp, 8 SEP all faster, 0 slower, laypad
+PASS laystd 0/24 + laypgo +8.6; drop-1 tL0e -1.2 is PGO-inherited,
+flagged; profile pinned 16683192, land-retrained x2 EXACT) + B1P2-code
+HOLD (build-fuse + single-alloc, code +2.4 OV / stack +6.3 OV, neutral
+under PGO, banked b9f61d10, src NOT merged) + mL9 HOLD (V0-warmed +4.9
+SEP with mL0e -2.5 PRIMARY veto + diet +3.1 RED; diet KILLED -1.3
+PGO-collision + huf KILLED SROA-undone; banked, src reverted).
+Fresh R24 24-cell matrix (ship tip, n=70, 23 SEP / 1 OV, DIV md5
+5d68b09c == R12-R23): top-6 enc order identical (mL9e -62.3 #1 / tL9e
+-61.2 / mL5e -59.8 / mL1e -59.4 / tL1e -57.6 / tL5e -57.0; SHIP-CONFIRM
+tL9d in-band + HOLD reconfirm mL9e; L5-neutral 6th round).
+RULING-L0-DROP1-ENCODE closes the owed L0 item (secondary-flag extends
+encode-side, primary-veto absolute; k=7 warmed rig validated). Memo Q/A
+2/2 FORMAL (L5 decode census + PGO fusion decomposition). PGO 7/17 15th
+straight 0-slower round (tL5d + mL9e NEW SEP). Evidence: branch lanes
+(`lanes/r24-mL9`, `lanes/r24-tL5d`, `lanes/r24-matrix`, `lanes/r24-memo`)
++ drops + land re-runs `tmp/r24land/`.
+
 Reading the gap (both sides in-process, no pipe floor):
 
 - Apple ahead on all 16 text/mixed codec cells (all SEPARATED,

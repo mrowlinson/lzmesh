@@ -1,0 +1,8 @@
+166831923aec5c6c4eebef9d0d092c5a
+# land-supplied pin (r24-land): pure-PGO ship, zero code delta; ship-gate
+# Air train e616e5bd (ab-pgoonly/profdata-base.md5, box-differs disclosed).
+# land re-trained T0 recipe locally x2 (pgo-land1 + pgo-land2, NVME) and
+# reproduced 16683192... EXACTLY both runs == hunter local retrain x2 ==
+# memo tip-T0 prefix => same-box determinism verified first-hand (5 runs).
+# box-differs (Air vs local) is disclosed precedent, not a gate (R23 land).
+# applies to ab-pgoonly ship arm + ab-laypad laypgo arm (same T0 recipe).

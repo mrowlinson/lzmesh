@@ -1,0 +1,34 @@
+base: runs=5 load1 1.15-1.15 ncpu=8 pin=taskpolicy-t0l0 bin=./bench/bench24tL5d-base
+opt : runs=5 load1 1.15-1.15 ncpu=8 pin=taskpolicy-t0l0 bin=./bench/bench24tL5d-laypgo
+base cells=24 opt cells=24
+--- text-256k.bin enc ---
+  L0: base 488.28 (484.31-490.20) opt 481.70 (478.01-483.56) uplift -1.3% n=30/30 SEPARATED(opt slower)
+  L1: base 137.55 (136.68-137.91) opt 152.16 (151.51-152.73) uplift +10.6% n=30/30 SEPARATED(opt faster)
+  L5: base 105.91 (105.31-106.34) opt 111.14 (110.37-111.96) uplift +4.9% n=30/30 SEPARATED(opt faster)
+  L9: base 87.97 (87.59-88.28) opt 91.52 (90.57-91.95) uplift +4.0% n=30/30 SEPARATED(opt faster)
+--- text-256k.bin dec ---
+  L0: base 1315.79 (1267.13-1316.49) opt 1308.90 (1281.40-1315.79) uplift -0.5% n=30/30 OVERLAP
+  L1: base 833.34 (814.33-841.75) opt 883.40 (853.24-892.86) uplift +6.0% n=30/30 SEPARATED(opt faster)
+  L5: base 827.81 (816.99-833.61) opt 896.06 (865.05-905.80) uplift +8.2% n=30/30 SEPARATED(opt faster)
+  L9: base 829.19 (814.07-838.93) opt 894.46 (861.19-905.80) uplift +7.9% n=30/30 SEPARATED(opt faster)
+--- mixed-128k.bin enc ---
+  L0: base 401.93 (394.20-404.53) opt 393.08 (386.88-395.57) uplift -2.2% n=30/30 OVERLAP
+  L1: base 187.97 (185.74-189.71) opt 197.16 (193.80-198.76) uplift +4.9% n=30/30 SEPARATED(opt faster)
+  L5: base 141.08 (139.96-142.21) opt 148.99 (146.37-149.90) uplift +5.6% n=30/30 SEPARATED(opt faster)
+  L9: base 113.38 (111.81-114.07) opt 118.88 (116.70-119.51) uplift +4.9% n=30/30 SEPARATED(opt faster)
+--- mixed-128k.bin dec ---
+  L0: base 1269.07 (1262.63-1275.51) opt 1262.63 (1258.91-1275.51) uplift -0.5% n=30/30 OVERLAP
+  L1: base 1225.49 (1105.22-1275.51) opt 1250.00 (1136.36-1315.79) uplift +2.0% n=30/30 OVERLAP
+  L5: base 1689.50 (1470.59-1760.56) opt 1798.65 (1543.21-1896.85) uplift +6.5% n=30/30 OVERLAP
+  L9: base 1515.21 (1329.79-1582.28) opt 1592.42 (1418.86-1819.83) uplift +5.1% n=30/30 OVERLAP
+--- zeros-64k.bin enc ---
+  L0: base 1524.39 (1520.76-1524.39) opt 1008.06 (975.06-1024.59) uplift -33.9% n=30/30 SEPARATED(opt slower)
+  L1: base 3050.60 (2976.19-3125.00) opt 1524.39 (1524.39-1524.39) uplift -50.0% n=30/30 SEPARATED(opt slower)
+  L5: base 2976.19 (2976.19-3125.00) opt 1524.39 (1524.39-1524.39) uplift -48.8% n=30/30 SEPARATED(opt slower)
+  L9: base 3050.60 (2686.04-3125.00) opt 1524.39 (1524.39-1524.39) uplift -50.0% n=30/30 SEPARATED(opt slower)
+--- zeros-64k.bin dec ---
+  L0: base 62500.00 (62500.00-62500.00) opt 62500.00 (62500.00-62500.00) uplift +0.0% n=26/27 OVERLAP
+  L1: base 62500.00 (31250.00-62500.00) opt 62500.00 (31250.00-62500.00) uplift +0.0% n=30/30 OVERLAP
+  L5: base 62500.00 (31250.00-62500.00) opt 62500.00 (31250.00-62500.00) uplift +0.0% n=30/30 OVERLAP
+  L9: base 46875.00 (31250.00-62500.00) opt 62500.00 (31250.00-62500.00) uplift +33.3% n=30/30 OVERLAP
+verdicts: 14 SEPARATED, 10 OVERLAP
