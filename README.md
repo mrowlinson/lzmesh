@@ -51,35 +51,39 @@ The 5 are byte-identical before and after the gating merge
 
 Throughput in MiB/s, medians over n=70 (10 gated runs × 7 reps,
 interleaved port-vs-Apple, same box back-to-back), MacBookAir M1,
-Apple clang 21 `-O2 -std=c11`. Tables read the R27 matrix on the
-R26 hold tip (`port/src/lzmesh_enc.c` md5 3fec8aa3,
-`port/src/lzmesh_dec.c` md5 0dae2df4; R25–R26 changed no code — all
-hunters held). R27 SHIPPED tL5d-d1 (`port/src/lzmesh_dec.c` md5
-5a147a81; text+mixed L0 dec rel +20.1/+17.9, gap-share
-+31.8/+21.4pp gate-primary); ship numbers land in tables at the R28
-re-measure. Both sides in-process: port `bench/bench.c` vs Apple
+Apple clang 21 `-O2 -std=c11`. Tables read the R28 matrix on the
+R27 ship tip (`port/src/lzmesh_enc.c` md5 3fec8aa3,
+`port/src/lzmesh_dec.c` md5 5a147a81; R27 SHIPPED tL5d-d1,
+text+mixed L0 dec rel +20.1/+17.9, gap-share +31.8/+21.4pp
+gate-primary; R28 re-measured +22.0/+19.3 on the ship tip (window
+note: different nulls — gate null + R27 anchors vs R28 ship-tip null;
+R28 null is the R28 primary; gap-share stays gate-primary per memo
+FORMAL, no R28-anchor recompute); ship numbers now in tables below).
+R28 HELD (no ship: H1N1 micro banked bytes-only, SFX/stack/v2d
+CLOSED, canon/hist/layenc staged for R29; detail in history). Both
+sides in-process: port `bench/bench.c` vs Apple
 `bench/abench` (same harness, no fork+exec+pipe floor).
 
 Encode, port / Apple:
 
 | corpus | L0 | L1 | L5 | L9 |
 |--------|----|----|----|----|
-| text-256k | 485.44 / 971.25 | 137.36 / 325.10 | 105.80 / 245.82 | 87.81 / 226.76 |
-| mixed-128k | 399.36 / 862.07 | 187.41 / 461.25 | 140.61 / 352.61 | 112.31 / 296.91 |
-| zeros-64k | 1524.39 / 1984.63 | 3125.00 / 5208.33 | 2976.19 / 5208.33 | 2976.19 / 919.12 |
+| text-256k | 481.70 / 1018.44 | 137.36 / 323.21 | 105.78 / 245.82 | 87.90 / 226.86 |
+| mixed-128k | 401.29 / 862.07 | 186.71 / 461.25 | 140.21 / 350.14 | 112.31 / 296.21 |
+| zeros-64k | 1524.39 / 1953.12 | 2976.19 / 5208.33 | 2976.19 / 5208.33 | 2976.19 / 919.12 |
 
 Decode, port / Apple (each side decodes its own bytes):
 
 | corpus | L0 | L1 | L5 | L9 |
 |--------|----|----|----|----|
-| text-256k | 1272.27 / 2136.75 | 830.56 / 1412.43 | 827.81 / 1515.15 | 827.81 / 1543.21 |
-| mixed-128k | 1262.63 / 2314.81 | 1184.86 / 2450.98 | 1602.56 / 2659.57 | 1462.04 / 2403.85 |
+| text-256k | 1552.80 / 2304.20 | 875.66 / 1404.49 | 865.05 / 1506.02 | 865.05 / 1543.21 |
+| mixed-128k | 1506.02 / 2314.81 | 1269.07 / 2450.98 | 1666.67 / 2659.57 | 1533.80 / 2403.85 |
 | zeros-64k | 62500.00 / 31250.00 | 31250.00 / 5681.82 | 31250.00 / 5681.82 | 31250.00 / 5681.82 |
 
-Standings (R27 gaps, port vs Apple): the worst six cells are all
-encode — mixed L9 −62.2%, text L9 −61.3%, mixed L5 −60.1%,
-mixed L1 −59.4%, text L1 −57.7%, text L5 −57.0% (all SEPARATED).
-Decode trails worst on mixed L1 −51.7% and text L9 −46.4%.
+Standings (R28 gaps, port vs Apple): the worst six cells are all
+encode — mixed L9 −62.1%, text L9 −61.3%, mixed L5 −60.0%,
+mixed L1 −59.5%, text L1 −57.5%, text L5 −57.0% (all SEPARATED).
+Decode trails worst on mixed L1 −48.2% and text L9 −43.9%.
 
 Ships to date (per-wave detail in [WAVES.md](WAVES.md)):
 
@@ -101,23 +105,23 @@ Ships to date (per-wave detail in [WAVES.md](WAVES.md)):
 | R27 | tL5d-d1 L0-ship | text+mixed L0 dec (rel +20.1/+17.9, gap-share +31.8/+21.4pp) |
 
 No-ship waves (holds/kills, detail in history): R7 (matrix fold
-only), R14, R16, R19, R20, R21, R22, R25, R26.
+only), R14, R16, R19, R20, R21, R22, R25, R26, R28.
 
-Full per-wave history (R27–R4, newest first): [WAVES.md](WAVES.md).
+Full per-wave history (R28–R4, newest first): [WAVES.md](WAVES.md).
 Future land folds append new waves there; this section keeps only
 current standings.
 
 Reading the gap (both sides in-process, no pipe floor):
 
 - Apple ahead on all 16 text/mixed codec cells (all SEPARATED,
-  gaps −39.2% to −62.2%): real port deficits, the optimization
-  frontier. Text L0 enc carries wide bands (median 485.44,
-  band 392.96–488.28, Apple wide too 823.22–1082.25 — sprawl, not
-  signal; holds cross-run (482.63→485.44 R26→R27, bands
+  gaps −32.6% to −62.1%): real port deficits, the optimization
+  frontier. Text L0 enc carries wide bands (median 481.70,
+  band 396.07–489.24, Apple wide too 871.08–1082.25 — sprawl, not
+  signal; holds cross-run (485.44→481.70 R27→R28, bands
   overlap)).
 - Zeros cells are timer-floor artifacts (NO-CLAIM): enc medians
   flip between 2976/3125 quanta run to run; zeros L0 dec reads
-  n=64/70 (ns==0 samples dropped by the cmp filter) OVERLAP;
+  n=61/70 (ns==0 samples dropped by the cmp filter) OVERLAP;
   L1/L5/L9 dec +450.0% x3 SEPARATED-port is pure
   quantum artifact, not a speed claim (median flip back
   62500→31250 inside the same band).
@@ -129,34 +133,39 @@ OK, 12/12 both directions; not ship-introduced). Every wave
 re-verifies the same 9/12 IDENT + 3 mixed DIVs on its ship and
 HOLD stacks (FULL/HOLD/FRESH 0 NEW base-vs-ship direct,
 lane-gated + land-verified); DIV lines byte-identical every
-round, md5 5d68b09c R12–R27. Sizes within 3 B,
+round, md5 5d68b09c R12–R28. Sizes within 3 B,
 so dec-timing inputs are size-matched.
 
 PGO is opt-in and build-only (`make pgo`; the default build tree
 is untouched, no source change). Re-measured on this tree (Air,
-interleaved --ab, n=70, 6SEP/18OVER, 6 faster, 0 slower, 18th
-straight 0-slower round): text-256k enc L1/L5/L9 +10.2/+4.8/+3.8%
-SEPARATED; mixed-enc L1/L5/L9 +4.5/+5.4/+3.8% (L5 SEPARATED
-flip-back, L1/L9 OVERLAP — mL5e SEP→OV→SEP with run5-recurrence
-T3 flag; see `tmp/matrix-r27/pgo/ev/cmp-pgo.txt`); text-dec
-L1/L5/L9 +4.5/+9.2/+7.7% (L5/L9 SEPARATED, L1 OVERLAP); mixed-dec
-L1/L5/L9 +6.0/+10.0/+7.7% OVERLAP (NO-CLAIM).
-Caveats: none SEPARATED-slower on the std rig — L0 PGO headroom
-now ~0 on both sides (text L0 enc −1.4% / mixed L0 enc −2.8%
-OVERLAP; static diet only, no PGO-stack left on L0); text/mixed
-dec L0 −0.5/−1.0% OVERLAP (NO-CLAIM); zeros all OVERLAP (timer
-floor); drop-1 secondary tL0e −1.3% OVERLAP — the R26 PGO-inherited
-SEP-slower limitation did NOT reproduce (std primary clean both
-waves).
+interleaved --ab, n=70, 6SEP/18OVER, composition flipped): the
+0-slower streak ENDS at 18 — text L0 enc −2.3% SEPARATED-slower is
+a PRIMARY-veto-class lean (FORMAL BINDING, deepening R24 −1.0 →
+R28 −2.3; no PGO-stack variant with tL0e SEP-slower ships).
+Text-256k enc L1/L5/L9 +10.2/+4.7/+3.8% SEPARATED; mixed-enc L1/L5
++5.1/+5.3% SEPARATED (L1 OV→SEP reprice, L5 STANDS T3-clean gap
+2.61 — run5/run7 both in-pack, no recurrence; see
+`tmp/matrix-r28/pgo/cmp-pgo.txt`) with L9 +4.4% OVERLAP;
+text-dec L1/L5/L9 +1.8/+5.9/+6.2%
+OVERLAP (L5/L9 SEP→OV ship-explained); mixed-dec L1/L5/L9
+−1.0/+7.1/+4.5% OVERLAP (NO-CLAIM).
+Caveats: mixed L0 enc −3.4% OVERLAP carries a rule-1 flagged
+limitation (drop-1-only −3.3 SEP-slower, pack-level; watch R29);
+text/mixed dec L0 −0.6/−1.2% OVERLAP (NO-CLAIM); zeros all OVERLAP
+(timer floor); drop-1 secondary 9/15 (tL5d SEP +5.9 + mL9e SEP +4.5
++ mL0e SEP-slower −3.3).
 Byte-identity holds under PGO: PGO-binary enc == normal enc 12/12.
 
 Sources: every cell traces to
-`tmp/matrix-r27/ev/cmp-matrix.txt` (bands + n +
-verdicts), reproducible byte-identically from `ev/matrix/`
-run TSVs; PGO from `tmp/matrix-r27/pgo/ev/cmp-pgo.txt` + `gated-pgoab/`;
-exact-cap from `tmp/matrix-r12/exactcap/cmp-exactcap.txt`.
-Gate: load1 < 16, 0 refusals on all runs (matrix 1.01–1.27,
-pgoab 1.34–1.37), pin `taskpolicy-t0l0`.
+`tmp/matrix-r28/matrix-ev/cmp-matrix.txt`
+(bands + n + verdicts), reproducible byte-identically from
+`tmp/matrix-r28/matrix-ev/matrix/` run TSVs; PGO from
+`tmp/matrix-r28/pgo/cmp-pgo.txt` +
+`tmp/matrix-r28/pgo/gated-pgoab/`; exact-cap from
+`tmp/matrix-r12/exactcap/cmp-exactcap.txt` (not re-run R28; R12 cite
+retained).
+Gate: load1 < 16, 0 refusals on all runs (matrix 1.12–2.03,
+pgoab 1.44–1.48), pin `taskpolicy-t0l0`.
 Method: `docs/PERF.md` + `bench/GATED-PROTOCOL.md`; Apple
 harness: in-process `bench/abench`.
 

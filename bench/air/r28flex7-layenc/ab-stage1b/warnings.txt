@@ -1,0 +1,6 @@
+build-dec.log warnings=0
+build-lay.log warnings=0
+build-laypgo-cross.log warnings=2
+build-laypgo-own.log warnings=2
+build-tip.log warnings=0
+build-tippgo.log warnings=2

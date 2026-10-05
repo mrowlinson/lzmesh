@@ -1,0 +1,117 @@
+diff --git a/port/src/lzmesh_enc.c b/port/src/lzmesh_enc.c
+index d37e67924..3a6513f68 100644
+--- a/port/src/lzmesh_enc.c
++++ b/port/src/lzmesh_enc.c
+@@ -12,6 +12,41 @@
+ #include <string.h> /* memmove for RAW copy (u1-owned include; hoist at merge) */
+ #include <stdio.h>
+ #include <stdlib.h>
++/* R28-TL5D-T2-PHASESPLIT (MEASUREMENT-ONLY, reverted before any ship
++ * claim): env-gated solve-vs-emit phase timers for the L0-encode
++ * warmed-gap split. LZMESH_PHASESPLIT=1 enables; LZMESH_PHASELOG=path
++ * selects the dump file (default stderr). Covers u35_emit_inner
++ * (single-block) + u36m walker (multi-block) L0 paths only. */
++#include <time.h>
++static unsigned long long t2_ph_solve = 0ull;
++static unsigned long long t2_ph_emit = 0ull;
++static unsigned long long t2_ph_n = 0ull;
++static int t2_ph_en = -1;
++static unsigned long long t2_ph_now(void) {
++    struct timespec ts;
++    clock_gettime(CLOCK_MONOTONIC, &ts);
++    return (unsigned long long)ts.tv_sec * 1000000000ull +
++        (unsigned long long)ts.tv_nsec;
++}
++static int t2_ph_on(void) {
++    if (t2_ph_en < 0) {
++        const char *e = getenv("LZMESH_PHASESPLIT");
++        t2_ph_en = (e && e[0] == '1') ? 1 : 0;
++    }
++    return t2_ph_en;
++}
++__attribute__((destructor)) static void t2_ph_dump(void) {
++    if (t2_ph_en == 1) {
++        const char *p = getenv("LZMESH_PHASELOG");
++        FILE *f = p ? fopen(p, "a") : NULL;
++        if (!f)
++            f = stderr;
++        fprintf(f, "PHASESPLIT solve=%llu emit=%llu n=%llu\n", t2_ph_solve,
++            t2_ph_emit, t2_ph_n);
++        if (f != stderr)
++            fclose(f);
++    }
++}
+ #if defined(__ARM_NEON)
+ #include <arm_neon.h> /* P3-N1: u37_extend vector path only */
+ #endif
+@@ -9538,12 +9573,16 @@ static size_t lzmesh_u35_emit_inner(uint8_t *dst, size_t dst_capacity,
+                        unsigned ncap, int later, int noend) {
+     lzmesh_r2_huftabs t; /* R2-STORE: struct-backed locals, zero-copy */
+     uint64_t ctot;
++    unsigned long long t2t0 = 0ull;
++    int t2on = t2_ph_on();
+     if (dst == NULL || src == NULL)
+         return 0;
+     if (l0 ? level != 0 : level != 1)
+         return 0; /* emit re-certifies (never diverges from want) */
+     if (!l0 && !lzmesh_u35_cert(src, size))
+         return 0; /* L0: no finding, parse forced (no cert) */
++    if (t2on)
++        t2t0 = t2_ph_now();
+     if (!lzmesh_u35_lengths(src, size, t.lens, t.codes, t.mlens,
+                             t.mcodes, t.vals, &t.used, t.bitc, &ctot,
+                             ncap))
+@@ -9553,12 +9592,23 @@ static size_t lzmesh_u35_emit_inner(uint8_t *dst, size_t dst_capacity,
+                                  t.idxbuf, (unsigned)sizeof t.idxbuf,
+                                  t.lenb5, &t.idxsz, 1, ncap, later))
+         return 0;
++    if (t2on)
++        t2_ph_solve += t2_ph_now() - t2t0;
+     if (!l0
+         && lzmesh_u35_bprime_decline(src, size, t.lens, t.bitc,
+                                      t.laneb))
+         return 0;
+-    return lzmesh_r2_emit_write(dst, dst_capacity, src, size, level, l0,
+-                                noend, &t);
++    if (t2on)
++        t2t0 = t2_ph_now();
++    {
++        size_t t2r = lzmesh_r2_emit_write(dst, dst_capacity, src, size,
++                                          level, l0, noend, &t);
++        if (t2on) {
++            t2_ph_emit += t2_ph_now() - t2t0;
++            t2_ph_n++;
++        }
++        return t2r;
++    }
+ }
+ 
+ size_t lzmesh_u35_emit(uint8_t *dst, size_t dst_capacity,
+@@ -10013,6 +10063,10 @@ size_t lzmesh_r2_u36m_try(uint8_t *dst, size_t dst_capacity,
+             lzmesh_r2_huftabs t;
+             uint64_t ctot;
+             const uint8_t *blk = src + off;
++            unsigned long long t2t0 = 0ull;
++            int t2on = t2_ph_on();
++            if (t2on)
++                t2t0 = t2_ph_now();
+             if (!lzmesh_u35_lengths(blk, bs, t.lens, t.codes, t.mlens,
+                                     t.mcodes, t.vals, &t.used, t.bitc,
+                                     &ctot, LZMESH_U36M_BMAX))
+@@ -10024,8 +10078,16 @@ size_t lzmesh_r2_u36m_try(uint8_t *dst, size_t dst_capacity,
+                                          t.lenb5, &t.idxsz, 1,
+                                          LZMESH_U36M_BMAX, i > 0u))
+                 return 0;
++            if (t2on)
++                t2_ph_solve += t2_ph_now() - t2t0;
++            if (t2on)
++                t2t0 = t2_ph_now();
+             w = lzmesh_r2_emit_write(dst + s, need - s, blk, bs, 0, 1,
+                                      1, &t);
++            if (t2on) {
++                t2_ph_emit += t2_ph_now() - t2t0;
++                t2_ph_n++;
++            }
+             if (w == 0u || w != (size_t)fo + 10u)
+                 return 0;
+             s += w;

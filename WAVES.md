@@ -1,13 +1,48 @@
-# Performance wave history (R27–R4, newest first)
+# Performance wave history (R28–R4, newest first)
 
 Per-wave Performance folds moved out of `README.md` (R26 docs
 consolidation, verbatim). Each entry keeps its original wording,
 including contemporary references ("tables above", "PGO below",
 "paragraphs below") — those point at the `README.md` Performance
 section as it read when the wave landed; current standings live
-there now. Coverage: every wave entry ever folded (R26 down to
+there now. Coverage: every wave entry ever folded (R28 down to
 R4; no R5 entry was ever recorded). Future waves append new
 entries at the top; `README.md` keeps only current standings.
+
+<a id="r28"></a>
+## R28
+
+R28 HELD (no ship): tL5d T1 CLOSED no-vehicle (F1 VALID 2232/2232
+but PGO-wash +7 lines, F2 VALID but slower depth 3v2, floor bic-form
+re-confirmed, SFX op-cut NONE EXISTS; staged vehicle DO-NOT-BURN) +
+T2 solve-D sole lead (put EXONERATED 38x, drain-BP KILLED, BP KILLED
+8x-short; phase-split STAGED for R29, slot-4th SKIPPED on dead lane)
++ mL9 T1 H1N1 bytes GREEN 6/6 PASS NEW=0 (BANK micro +0.001-0.005%,
+no timing) + T3 fn-HOLD firms + T4 mL5e STANDS (below). Fresh R28
+24-cell matrix (R27 ship tip fdd6327ba, n=70, 23 SEP / 1 OV zL0d
+n=61/70, DIV md5 5d68b09c == R12-R28): top-6 enc order identical
+(mL9e −62.1 #1 / tL9e −61.3 / mL5e −60.0 / mL1e −59.5 / tL1e −57.5 /
+tL5e −57.0); moved/unmoved 8 SHIP-MOVED (dec, +4.0/+22.0% up) /
+16 UNMOVED (8 enc + 8 zeros; zL1e median-quantization mirror,
+band-identical); SHIP-CONFIRM d1 CONFIRMED (tL0d rel −1.2% /
+mL0d rel +1.2%, PGO legs EXACT); HOLD reconfirm V0 (mL9e median
+EXACT rel +0.0%, banked V0-warmed above band, HOLD stands). PGO
+6/18 composition-FLIPPED, 0-slower streak ENDS at 18 (tL0e −2.3
+SEP-slower PRIMARY-veto FORMAL BINDING, R24 −1.0 → R28 −2.3
+deepening; mL5e +5.3 STANDS T3-clean gap 2.61; mL1e OV→SEP +5.1
+reprice; mL0e −3.4 rule-1 limitation; tL5d/tL9d SEP→OV
+ship-explained). Flexes: h1n1-solo banked micro (H1 +0.000-0.002 /
+N1 +0.001-0.003 compiled, cold-outline CONFIRMED, union
+NON-additive) + stackmath recompute KILL (+0.011-0.355%
+unconditional) + p1-locus REGION census (R28==R27 9/9 IDENT,
+TRY-capture shipped, walk-elimination DEAD) + v2d CLOSED
+compiler-subsumed + canon/hist GREEN timing-worthy (N-gates
+2048/4096 measured) + layenc staged gate + docs. Memo Q/A 24/24
+FORMAL diff 0. Land: recompute 24/24 EXACT x2 + pins EXACT +
+tiers/merged bytes land-run (FULL/HOLD/FRESH/d77 NEW=0 +
+units 1083/1076/0/0 x2 + smoke 1232/0 x2). Evidence: branches
+lanes/r28-r28-{flex1..10,matrix,mL9,memo,tL5d,dispatch,land} + drops
++ answers.
 
 <a id="r27"></a>
 ## R27

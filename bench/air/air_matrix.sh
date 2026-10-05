@@ -42,7 +42,7 @@ uptime
 sysctl -n hw.ncpu 2>/dev/null
 sw_vers -productVersion 2>/dev/null
 cc --version 2>/dev/null | head -n 1
-echo "EXPECT_SHA=2b7238fd4e9ca04a26c6ef0a28859b83c41654ce (lanes/lane-4 R26-land base; r27-matrix)"
+echo "EXPECT_SHA=fdd6327ba207c803f54bc685ce8d403b24565135 (r27-land2 SHIP tip: tL5d-d1 L0-ship; r28-matrix)"
 echo "EXPECT_ENC_MD5=3fec8aa3274f901b1372be85936a77a2"
 echo "EXPECT_DEC_MD5=5a147a81d4df9269f52e652981dd5776 (R27 tL5d-d1 L0-ship; r27-land2)"
 md5 "$P/src/lzmesh_enc.c" "$P/src/lzmesh_dec.c"

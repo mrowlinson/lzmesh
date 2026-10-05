@@ -1,0 +1,2 @@
+tip ld=7676 st=4981 cbr=7041 mov=10036
+lay ld=7676 st=4981 cbr=7041 mov=10036

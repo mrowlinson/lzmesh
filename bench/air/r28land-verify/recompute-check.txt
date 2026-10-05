@@ -1,0 +1,107 @@
+WARN matrix-ev/matrix/port/run1.tsv: ns==0 skipped (zeros-64k.bin L0 dec)
+WARN matrix-ev/matrix/port/run10.tsv: ns==0 skipped (zeros-64k.bin L0 dec)
+WARN matrix-ev/matrix/port/run3.tsv: ns==0 skipped (zeros-64k.bin L0 dec)
+WARN matrix-ev/matrix/port/run6.tsv: ns==0 skipped (zeros-64k.bin L0 dec)
+WARN matrix-ev/matrix/port/run6.tsv: ns==0 skipped (zeros-64k.bin L0 dec)
+WARN matrix-ev/matrix/port/run7.tsv: ns==0 skipped (zeros-64k.bin L0 dec)
+WARN matrix-ev/matrix/port/run7.tsv: ns==0 skipped (zeros-64k.bin L0 dec)
+WARN matrix-ev/matrix/port/run9.tsv: ns==0 skipped (zeros-64k.bin L0 dec)
+WARN matrix-ev/matrix/port/run9.tsv: ns==0 skipped (zeros-64k.bin L0 dec)
+== row-count audit (want 168 per run per side) ==
+  port/run1.tsv: 168
+  port/run10.tsv: 168
+  port/run2.tsv: 168
+  port/run3.tsv: 168
+  port/run4.tsv: 168
+  port/run5.tsv: 168
+  port/run6.tsv: 168
+  port/run7.tsv: 168
+  port/run8.tsv: 168
+  port/run9.tsv: 168
+  apple/run1.tsv: 168
+  apple/run10.tsv: 168
+  apple/run2.tsv: 168
+  apple/run3.tsv: 168
+  apple/run4.tsv: 168
+  apple/run5.tsv: 168
+  apple/run6.tsv: 168
+  apple/run7.tsv: 168
+  apple/run8.tsv: 168
+  apple/run9.tsv: 168
+row-audit: PASS
+== header audit (bins must differ port vs apple; pins uniform) ==
+  port: bins=['/Users/meganrowlinson/Projects/LZMESH-jobs/port/./bench/bench']
+  port: pins=['taskpolicy-t0l0']
+    run1.tsv: loadavg=1.13 1.13 1.23 ncpu 8 pin taskpolicy-t0l0 side=port run 1-of-10 reps 7 levels 0159 order [port apple]
+    run10.tsv: loadavg=1.37 1.37 1.30 ncpu 8 pin taskpolicy-t0l0 side=port run 10-of-10 reps 7 levels 0159 order [apple port]
+    run2.tsv: loadavg=1.38 1.20 1.25 ncpu 8 pin taskpolicy-t0l0 side=port run 2-of-10 reps 7 levels 0159 order [apple port]
+    run3.tsv: loadavg=1.33 1.21 1.25 ncpu 8 pin taskpolicy-t0l0 side=port run 3-of-10 reps 7 levels 0159 order [port apple]
+    run4.tsv: loadavg=1.12 1.17 1.23 ncpu 8 pin taskpolicy-t0l0 side=port run 4-of-10 reps 7 levels 0159 order [apple port]
+    run5.tsv: loadavg=1.13 1.15 1.22 ncpu 8 pin taskpolicy-t0l0 side=port run 5-of-10 reps 7 levels 0159 order [port apple]
+    run6.tsv: loadavg=1.28 1.19 1.23 ncpu 8 pin taskpolicy-t0l0 side=port run 6-of-10 reps 7 levels 0159 order [apple port]
+    run7.tsv: loadavg=1.45 1.23 1.24 ncpu 8 pin taskpolicy-t0l0 side=port run 7-of-10 reps 7 levels 0159 order [port apple]
+    run8.tsv: loadavg=2.03 1.44 1.32 ncpu 8 pin taskpolicy-t0l0 side=port run 8-of-10 reps 7 levels 0159 order [apple port]
+    run9.tsv: loadavg=1.55 1.41 1.31 ncpu 8 pin taskpolicy-t0l0 side=port run 9-of-10 reps 7 levels 0159 order [port apple]
+  apple: bins=['/Users/meganrowlinson/Projects/LZMESH-jobs/port/./bench/abench']
+  apple: pins=['taskpolicy-t0l0']
+    run1.tsv: loadavg=1.13 1.13 1.23 ncpu 8 pin taskpolicy-t0l0 side=apple run 1-of-10 reps 7 levels 0159 order [port apple]
+    run10.tsv: loadavg=1.37 1.37 1.30 ncpu 8 pin taskpolicy-t0l0 side=apple run 10-of-10 reps 7 levels 0159 order [apple port]
+    run2.tsv: loadavg=1.38 1.20 1.25 ncpu 8 pin taskpolicy-t0l0 side=apple run 2-of-10 reps 7 levels 0159 order [apple port]
+    run3.tsv: loadavg=1.33 1.21 1.25 ncpu 8 pin taskpolicy-t0l0 side=apple run 3-of-10 reps 7 levels 0159 order [port apple]
+    run4.tsv: loadavg=1.12 1.17 1.23 ncpu 8 pin taskpolicy-t0l0 side=apple run 4-of-10 reps 7 levels 0159 order [apple port]
+    run5.tsv: loadavg=1.13 1.15 1.22 ncpu 8 pin taskpolicy-t0l0 side=apple run 5-of-10 reps 7 levels 0159 order [port apple]
+    run6.tsv: loadavg=1.28 1.19 1.23 ncpu 8 pin taskpolicy-t0l0 side=apple run 6-of-10 reps 7 levels 0159 order [apple port]
+    run7.tsv: loadavg=1.45 1.23 1.24 ncpu 8 pin taskpolicy-t0l0 side=apple run 7-of-10 reps 7 levels 0159 order [port apple]
+    run8.tsv: loadavg=2.03 1.44 1.32 ncpu 8 pin taskpolicy-t0l0 side=apple run 8-of-10 reps 7 levels 0159 order [apple port]
+    run9.tsv: loadavg=1.55 1.41 1.31 ncpu 8 pin taskpolicy-t0l0 side=apple run 9-of-10 reps 7 levels 0159 order [port apple]
+== per-cell recompute (port vs Apple) ==
+  text-256k.bin L0 enc: port 481.70 (396.07-489.24) apple 1018.44 (871.08-1082.25) port-vs-apple -52.7% n=70/70 SEPARATED(Apple faster)
+  text-256k.bin L1 enc: port 137.36 (132.69-138.35) apple 323.21 (311.33-325.99) port-vs-apple -57.5% n=70/70 SEPARATED(Apple faster)
+  text-256k.bin L5 enc: port 105.78 (102.31-106.25) apple 245.82 (242.14-247.04) port-vs-apple -57.0% n=70/70 SEPARATED(Apple faster)
+  text-256k.bin L9 enc: port 87.90 (85.00-88.16) apple 226.86 (222.90-228.52) port-vs-apple -61.3% n=70/70 SEPARATED(Apple faster)
+  text-256k.bin L0 dec: port 1552.80 (1373.63-1582.28) apple 2304.20 (1984.13-2475.25) port-vs-apple -32.6% n=70/70 SEPARATED(Apple faster)
+  text-256k.bin L1 dec: port 875.66 (835.84-893.18) apple 1404.49 (1320.68-1412.43) port-vs-apple -37.7% n=70/70 SEPARATED(Apple faster)
+  text-256k.bin L5 dec: port 865.05 (833.33-874.13) apple 1506.02 (1461.99-1533.74) port-vs-apple -42.6% n=70/70 SEPARATED(Apple faster)
+  text-256k.bin L9 dec: port 865.05 (838.65-874.13) apple 1543.21 (1505.12-1552.80) port-vs-apple -43.9% n=70/70 SEPARATED(Apple faster)
+  mixed-128k.bin L0 enc: port 401.29 (381.92-411.18) apple 862.07 (844.03-862.07) port-vs-apple -53.5% n=70/70 SEPARATED(Apple faster)
+  mixed-128k.bin L1 enc: port 186.71 (180.64-188.54) apple 461.25 (446.43-464.68) port-vs-apple -59.5% n=70/70 SEPARATED(Apple faster)
+  mixed-128k.bin L5 enc: port 140.21 (137.17-141.88) apple 350.14 (339.67-356.23) port-vs-apple -60.0% n=70/70 SEPARATED(Apple faster)
+  mixed-128k.bin L9 enc: port 112.31 (107.55-113.96) apple 296.21 (279.64-301.20) port-vs-apple -62.1% n=70/70 SEPARATED(Apple faster)
+  mixed-128k.bin L0 dec: port 1506.02 (1373.63-1506.02) apple 2314.81 (2268.67-2314.81) port-vs-apple -34.9% n=70/70 SEPARATED(Apple faster)
+  mixed-128k.bin L1 dec: port 1269.07 (1116.07-1358.70) apple 2450.98 (2314.81-2500.00) port-vs-apple -48.2% n=70/70 SEPARATED(Apple faster)
+  mixed-128k.bin L5 dec: port 1666.67 (1388.89-1814.26) apple 2659.57 (2500.00-2717.39) port-vs-apple -37.3% n=70/70 SEPARATED(Apple faster)
+  mixed-128k.bin L9 dec: port 1533.80 (1262.63-1644.74) apple 2403.85 (2272.73-2450.98) port-vs-apple -36.2% n=70/70 SEPARATED(Apple faster)
+  zeros-64k.bin L0 enc: port 1524.39 (1453.49-1524.39) apple 1953.12 (1838.24-2016.13) port-vs-apple -22.0% n=70/70 SEPARATED(Apple faster)
+  zeros-64k.bin L1 enc: port 2976.19 (2976.19-3125.00) apple 5208.33 (4807.69-5681.82) port-vs-apple -42.9% n=70/70 SEPARATED(Apple faster)
+  zeros-64k.bin L5 enc: port 2976.19 (2976.19-3125.00) apple 5208.33 (4807.69-5681.82) port-vs-apple -42.9% n=70/70 SEPARATED(Apple faster)
+  zeros-64k.bin L9 enc: port 2976.19 (2840.91-3125.00) apple 919.12 (880.28-976.56) port-vs-apple +223.8% n=70/70 SEPARATED(port faster)
+  zeros-64k.bin L0 dec: port 62500.00 (62500.00-62500.00) apple 31250.00 (31250.00-62500.00) port-vs-apple +100.0% n=61/70 OVERLAP
+  zeros-64k.bin L1 dec: port 31250.00 (31250.00-62500.00) apple 5681.82 (2976.19-5681.82) port-vs-apple +450.0% n=70/70 SEPARATED(port faster)
+  zeros-64k.bin L5 dec: port 31250.00 (31250.00-62500.00) apple 5681.82 (2976.19-5738.64) port-vs-apple +450.0% n=70/70 SEPARATED(port faster)
+  zeros-64k.bin L9 dec: port 31250.00 (31250.00-62500.00) apple 5681.82 (3125.00-5681.82) port-vs-apple +450.0% n=70/70 SEPARATED(port faster)
+verdicts: 23 SEPARATED, 1 OVERLAP
+== gap ranking (worst port deficit first) ==
+   1. mixed-128k.bin L9 enc:   -62.1% port     112.31 [    107.55-    113.96] apple     296.21 [    279.64-    301.20] n=70/70 SEPARATED(Apple faster)
+   2. text-256k.bin L9 enc:   -61.3% port      87.90 [     85.00-     88.16] apple     226.86 [    222.90-    228.52] n=70/70 SEPARATED(Apple faster)
+   3. mixed-128k.bin L5 enc:   -60.0% port     140.21 [    137.17-    141.88] apple     350.14 [    339.67-    356.23] n=70/70 SEPARATED(Apple faster)
+   4. mixed-128k.bin L1 enc:   -59.5% port     186.71 [    180.64-    188.54] apple     461.25 [    446.43-    464.68] n=70/70 SEPARATED(Apple faster)
+   5. text-256k.bin L1 enc:   -57.5% port     137.36 [    132.69-    138.35] apple     323.21 [    311.33-    325.99] n=70/70 SEPARATED(Apple faster)
+   6. text-256k.bin L5 enc:   -57.0% port     105.78 [    102.31-    106.25] apple     245.82 [    242.14-    247.04] n=70/70 SEPARATED(Apple faster)
+   7. mixed-128k.bin L0 enc:   -53.5% port     401.29 [    381.92-    411.18] apple     862.07 [    844.03-    862.07] n=70/70 SEPARATED(Apple faster)
+   8. text-256k.bin L0 enc:   -52.7% port     481.70 [    396.07-    489.24] apple    1018.44 [    871.08-   1082.25] n=70/70 SEPARATED(Apple faster)
+   9. mixed-128k.bin L1 dec:   -48.2% port    1269.07 [   1116.07-   1358.70] apple    2450.98 [   2314.81-   2500.00] n=70/70 SEPARATED(Apple faster)
+  10. text-256k.bin L9 dec:   -43.9% port     865.05 [    838.65-    874.13] apple    1543.21 [   1505.12-   1552.80] n=70/70 SEPARATED(Apple faster)
+  11. zeros-64k.bin L1 enc:   -42.9% port    2976.19 [   2976.19-   3125.00] apple    5208.33 [   4807.69-   5681.82] n=70/70 SEPARATED(Apple faster)
+  12. zeros-64k.bin L5 enc:   -42.9% port    2976.19 [   2976.19-   3125.00] apple    5208.33 [   4807.69-   5681.82] n=70/70 SEPARATED(Apple faster)
+  13. text-256k.bin L5 dec:   -42.6% port     865.05 [    833.33-    874.13] apple    1506.02 [   1461.99-   1533.74] n=70/70 SEPARATED(Apple faster)
+  14. text-256k.bin L1 dec:   -37.7% port     875.66 [    835.84-    893.18] apple    1404.49 [   1320.68-   1412.43] n=70/70 SEPARATED(Apple faster)
+  15. mixed-128k.bin L5 dec:   -37.3% port    1666.67 [   1388.89-   1814.26] apple    2659.57 [   2500.00-   2717.39] n=70/70 SEPARATED(Apple faster)
+  16. mixed-128k.bin L9 dec:   -36.2% port    1533.80 [   1262.63-   1644.74] apple    2403.85 [   2272.73-   2450.98] n=70/70 SEPARATED(Apple faster)
+  17. mixed-128k.bin L0 dec:   -34.9% port    1506.02 [   1373.63-   1506.02] apple    2314.81 [   2268.67-   2314.81] n=70/70 SEPARATED(Apple faster)
+  18. text-256k.bin L0 dec:   -32.6% port    1552.80 [   1373.63-   1582.28] apple    2304.20 [   1984.13-   2475.25] n=70/70 SEPARATED(Apple faster)
+  19. zeros-64k.bin L0 enc:   -22.0% port    1524.39 [   1453.49-   1524.39] apple    1953.12 [   1838.24-   2016.13] n=70/70 SEPARATED(Apple faster)
+  20. zeros-64k.bin L0 dec:  +100.0% port   62500.00 [  62500.00-  62500.00] apple   31250.00 [  31250.00-  62500.00] n=61/70 OVERLAP
+  21. zeros-64k.bin L9 enc:  +223.8% port    2976.19 [   2840.91-   3125.00] apple     919.12 [    880.28-    976.56] n=70/70 SEPARATED(port faster)
+  22. zeros-64k.bin L1 dec:  +450.0% port   31250.00 [  31250.00-  62500.00] apple    5681.82 [   2976.19-   5681.82] n=70/70 SEPARATED(port faster)
+  23. zeros-64k.bin L5 dec:  +450.0% port   31250.00 [  31250.00-  62500.00] apple    5681.82 [   2976.19-   5738.64] n=70/70 SEPARATED(port faster)
+  24. zeros-64k.bin L9 dec:  +450.0% port   31250.00 [  31250.00-  62500.00] apple    5681.82 [   3125.00-   5681.82] n=70/70 SEPARATED(port faster)

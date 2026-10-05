@@ -1,0 +1,8 @@
+00000000000064f8 T _lzmesh_encode
+000000000000e1c0 T _lzmesh_encode_scratch_size
+0000000000013814 T _lzmesh_pack1_bitmap
+000000000001439c T _lzmesh_pack1_btab
+0000000000012884 T _lzmesh_pack1_canon
+000000000001447c T _lzmesh_pack1_final
+00000000000138a4 T _lzmesh_pack1_gather
+0000000000013948 T _lzmesh_pack1_header
