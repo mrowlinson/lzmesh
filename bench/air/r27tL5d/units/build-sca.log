@@ -1,0 +1,4 @@
+cc -O2 -std=c11 -Wall -Wextra -DLZMESH_SCALAR -I$P/include -c dec-d1.c
+cc -O2 -std=c11 -Wall -Wextra -DLZMESH_SCALAR -I$P/include -c lzmesh_enc.c
+cc -O2 -std=c11 -Wall -Wextra -DLZMESH_SCALAR -I$P/include -o port_cli_scalar
+cc -DLZMESH_SCALAR /Users/meganrowlinson/Projects/LZMESH-batch/port/tests/unit/test_*.c (each)

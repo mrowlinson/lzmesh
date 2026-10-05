@@ -1,0 +1,1 @@
+droprep1: files=5 drop=1 kept=720 dropped=120

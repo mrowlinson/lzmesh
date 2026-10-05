@@ -1,0 +1,1 @@
+func=lzmesh_h3_split lines=1310 ld=160 st=111 cbr=98 mov=320 bl=33

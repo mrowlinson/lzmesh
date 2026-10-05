@@ -1,0 +1,4 @@
+build-dec.log warnings=0
+build-lay.log warnings=0
+build-tip.log warnings=0
+build-union.log warnings=0

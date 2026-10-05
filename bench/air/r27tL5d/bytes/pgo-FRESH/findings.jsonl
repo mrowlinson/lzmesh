@@ -1,0 +1,8 @@
+{"input": "s2000-n29-period", "size": 29, "selector": "0xe01", "check": "ENC", "bucket": "ENC_DIFF", "o_len": 29, "p_len": 27, "o_sha": "e0c3e195843e59e4", "p_sha": "fd1a8a541d240d01"}
+{"input": "s2001-n256-alphabet", "size": 256, "selector": "0xe01", "check": "ENC", "bucket": "ENC_DIFF", "o_len": 126, "p_len": 126, "o_sha": "afa3aa1a62921674", "p_sha": "7eb9c348866e8ca7"}
+{"input": "s2002-n4095-sparse", "size": 4095, "selector": "0xe05", "check": "ENC", "bucket": "ENC_DIFF", "o_len": 239, "p_len": 239, "o_sha": "4ef7e66a3e58a0e2", "p_sha": "f18de5cefbabf0b7"}
+{"input": "s2002-n4095-sparse", "size": 4095, "selector": "0xe09", "check": "ENC", "bucket": "ENC_DIFF", "o_len": 239, "p_len": 239, "o_sha": "0cfaf73413c385c1", "p_sha": "6bf33dd41b125690"}
+{"input": "s2002-n100000-alphabet", "size": 100000, "selector": "0xe01", "check": "ENC", "bucket": "ENC_DIFF", "o_len": 47751, "p_len": 47749, "o_sha": "7823127d15991fb9", "p_sha": "607530bab0b93715"}
+{"input": "s2003-n257-sparse", "size": 257, "selector": "0xe05", "check": "ENC", "bucket": "ENC_DIFF", "o_len": 38, "p_len": 38, "o_sha": "92d52bd8a4b7e650", "p_sha": "a4676d0f4b962ed1"}
+{"input": "s2003-n257-sparse", "size": 257, "selector": "0xe09", "check": "ENC", "bucket": "ENC_DIFF", "o_len": 38, "p_len": 38, "o_sha": "92d52bd8a4b7e650", "p_sha": "a4676d0f4b962ed1"}
+{"input": "s2003-n4097-alphabet", "size": 4097, "selector": "0xe01", "check": "ENC", "bucket": "ENC_DIFF", "o_len": 2131, "p_len": 2131, "o_sha": "0a5ddc8459b35382", "p_sha": "e1031f939fc160b7"}

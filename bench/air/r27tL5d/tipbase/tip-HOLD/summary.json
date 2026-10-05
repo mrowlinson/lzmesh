@@ -1,0 +1,21 @@
+{
+  "cells": 3008,
+  "fail_cells": 3,
+  "buckets": {
+    "ENC_DIFF": 3
+  },
+  "seconds": 75.2,
+  "tier": "full",
+  "seeds": [
+    1000,
+    1003,
+    4
+  ],
+  "selectors": [
+    "0xe00",
+    "0xe01",
+    "0xe05",
+    "0xe09"
+  ],
+  "verdict": "FAIL"
+}

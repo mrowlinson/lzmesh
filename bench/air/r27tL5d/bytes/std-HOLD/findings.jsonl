@@ -1,0 +1,3 @@
+{"input": "s1001-n1025-sparse", "size": 1025, "selector": "0xe05", "check": "ENC", "bucket": "ENC_DIFF", "o_len": 91, "p_len": 91, "o_sha": "038ace14efa94a78", "p_sha": "ee35fb98676bb694"}
+{"input": "s1001-n1025-sparse", "size": 1025, "selector": "0xe09", "check": "ENC", "bucket": "ENC_DIFF", "o_len": 91, "p_len": 91, "o_sha": "038ace14efa94a78", "p_sha": "ee35fb98676bb694"}
+{"input": "s1002-n36-period", "size": 36, "selector": "0xe01", "check": "ENC", "bucket": "ENC_DIFF", "o_len": 31, "p_len": 42, "o_sha": "7c219c918f625b93", "p_sha": "6040317adf80cd69"}

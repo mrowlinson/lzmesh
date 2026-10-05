@@ -1,0 +1,1175 @@
+PASS  scratch decode
+PASS  scratch Le00
+PASS  scratch Le01
+PASS  scratch Le05
+PASS  scratch Le09
+PASS  valid Le00
+PASS  valid Le01
+PASS  valid Le05
+PASS  valid Le09
+PASS  invalid 0x0
+PASS  invalid 0x1
+PASS  invalid 0x2
+PASS  invalid 0x3
+PASS  invalid 0x4
+PASS  invalid 0x5
+PASS  invalid 0x6
+PASS  invalid 0x7
+PASS  invalid 0x8
+PASS  invalid 0x9
+PASS  invalid 0xa
+PASS  invalid 0xb
+PASS  invalid 0xc
+PASS  invalid 0xd
+PASS  invalid 0xe
+PASS  invalid 0xf
+PASS  invalid 0xe02
+PASS  invalid 0xe03
+PASS  invalid 0xe04
+PASS  invalid 0xe06
+PASS  invalid 0xe07
+PASS  invalid 0xe08
+PASS  invalid 0xe0a
+PASS  invalid 0xe0b
+PASS  invalid 0xe0c
+PASS  invalid 0xe0d
+PASS  invalid 0xe0e
+PASS  invalid 0xe0f
+PASS  invalid 0x100
+PASS  invalid 0x1e00
+PASS  invalid 0x10000
+PASS  invalid 0x1e05
+PASS  invalid 0x100e05
+PASS  invalid 0xdff
+PASS  invalid 0xe10
+PASS  invalid 0xf00
+PASS  invalid 0xffffffff
+PASS  invalid 0xfffffffb
+PASS  invalid 0xffffff00
+PASS  invalid 0x80000000
+PASS  invalid 0x7fffffff
+PASS  invalid 0x7fffffff
+PASS  invalid 0x80000e05
+PASS  enc1 Le00
+PASS  enc1 Le01
+PASS  enc1 Le05
+PASS  enc1 Le09
+PASS  dec-ff
+PASS  null enc-dst-cap0
+PASS  null enc-src-len0
+PASS  null dec-dst-cap0
+PASS  null dec-src-len0
+PASS  null sizer-len0
+PASS  enc tiny-caps
+PASS  dec big-dst
+---
+boundary: pass=64 fail=0
+PASS  run Le00 n=0
+PASS  run Le00 n=1
+PASS  run Le00 n=8
+PASS  run Le00 n=21
+PASS  run Le00 n=22
+PASS  run Le00 n=23
+PASS  run Le00 n=32
+PASS  run Le00 n=100
+PASS  run Le00 n=264
+PASS  run Le00 n=265
+PASS  run Le00 n=300
+PASS  run Le00 n=1000
+PASS  run Le00 n=4096
+PASS  run Le00 n=8192
+PASS  run Le00 n=16384
+PASS  run Le00 n=32768
+PASS  run Le01 n=0
+PASS  run Le01 n=1
+PASS  run Le01 n=8
+PASS  run Le01 n=21
+PASS  run Le01 n=22
+PASS  run Le01 n=23
+PASS  run Le01 n=32
+PASS  run Le01 n=100
+PASS  run Le01 n=264
+PASS  run Le01 n=265
+PASS  run Le01 n=300
+PASS  run Le01 n=1000
+PASS  run Le01 n=4096
+PASS  run Le01 n=8192
+PASS  run Le01 n=16384
+PASS  run Le01 n=32768
+PASS  run Le05 n=0
+PASS  run Le05 n=1
+PASS  run Le05 n=8
+PASS  run Le05 n=21
+PASS  run Le05 n=22
+PASS  run Le05 n=23
+PASS  run Le05 n=32
+PASS  run Le05 n=100
+PASS  run Le05 n=264
+PASS  run Le05 n=265
+PASS  run Le05 n=300
+PASS  run Le05 n=1000
+PASS  run Le05 n=4096
+PASS  run Le05 n=8192
+PASS  run Le05 n=16384
+PASS  run Le05 n=32768
+PASS  run Le09 n=0
+PASS  run Le09 n=1
+PASS  run Le09 n=8
+PASS  run Le09 n=21
+PASS  run Le09 n=22
+PASS  run Le09 n=23
+PASS  run Le09 n=32
+PASS  run Le09 n=100
+PASS  run Le09 n=264
+PASS  run Le09 n=265
+PASS  run Le09 n=300
+PASS  run Le09 n=1000
+PASS  run Le09 n=4096
+PASS  run Le09 n=8192
+PASS  run Le09 n=16384
+PASS  run Le09 n=32768
+PASS  pin Le00 n=21
+PASS  pin Le00 n=22
+PASS  pin Le00 n=265
+PASS  pin Le01 n=21
+PASS  pin Le01 n=22
+PASS  pin Le01 n=265
+PASS  pin Le05 n=21
+PASS  pin Le05 n=22
+PASS  pin Le05 n=265
+PASS  pin Le09 n=21
+PASS  pin Le09 n=22
+PASS  pin Le09 n=265
+PASS  pin Le00 n=264
+PASS  pin Le01 n=264
+PASS  pin Le05 n=264
+PASS  pin Le09 n=264
+PASS  L0cap n=62880
+PASS  L0cap n=62881
+PASS  L0cap n=62882
+PASS  run Le05 n=62881
+PASS  nonrun-emit Le00 fib20 n=28655
+PASS  nonrun-emit Le00 text-like n=2048
+PASS  nonrun-emit Le01 fib20 n=28655
+PASS  nonrun-emit Le01 text-like n=2048
+PASS  nonrun-emit Le05 fib20 n=28655
+XFAIL nonrun-emit Le05 text-like n=2048 :: outlen=2054 >= n (E-B2 general COMP pending)
+PASS  nonrun-emit Le09 fib20 n=28655
+XFAIL nonrun-emit Le09 text-like n=2048 :: outlen=2054 >= n (E-B2 general COMP pending)
+---
+comp-roundtrip: pass=90 fail=0 xfail=2
+PASS  e00 n000000.bin n=0
+PASS  e00 n000001.bin n=1
+PASS  e00 n000008.bin n=8
+PASS  e00 n000021.bin n=21
+XPASS e00 n000022.bin n=22 :: comp decode exact; COMP landed
+XPASS e00 n000032.bin n=32 :: comp decode exact; COMP landed
+XPASS e00 n000100.bin n=100 :: comp decode exact; COMP landed
+XPASS e00 n001000.bin n=1000 :: comp decode exact; COMP landed
+XPASS e00 n004096.bin n=4096 :: comp decode exact; COMP landed
+XPASS e00 n032768.bin n=32768 :: comp decode exact; COMP landed
+---
+e00-vectors: pass=4 fail=0 xfail=0 xpass=6
+PASS  tag-reject 02
+PASS  tag-reject 03
+PASS  tag-reject 7f
+PASS  tag-reject 80
+PASS  tag-reject fe
+PASS  raw-1000
+PASS  raw-1A
+PASS  trail raw+1
+PASS  trail raw+5
+PASS  trail comp+2
+PASS  hdr C5 bo>fo
+PASS  hdr C4 bo<9
+PASS  hdr C2 ds0
+PASS  hdr C6 fo==ds
+PASS  hdr C6 fo>ds
+PASS  trunc raw-noEND
+PASS  trunc empty
+PASS  trunc comp-noEND
+---
+framing: pass=18 fail=0
+PASS  base shape
+PASS  huf lit
+PASS  huf tok
+PASS  huf len
+PASS  res lit3
+PASS  res lit7
+PASS  res tok3
+PASS  res len5
+PASS  res dist3-c0
+PASS  c0 dist-repeat
+PASS  c0 dist-huf
+PASS  C8 tok0
+PASS  C9 tok>ds
+PASS  C10 len>ds
+PASS  C11 lit>ds
+PASS  C12 dist>tok
+PASS  modes hibits
+PASS  C13 d>w
+---
+huff-suffix: pass=18 fail=0
+PASS  db7 T10 accept
+PASS  db7 T62912 accept
+PASS  db7 T62913 reject
+---
+m16-db7: pass=3 fail=0
+PASS  mtf V1 rep1->rep2
+PASS  mtf V2 rep0->rep3
+PASS  za V1 fo==bo
+PASS  za V2 fo==bo
+PASS  za fo==bo sb>0 reject
+PASS  za unused-nonempty accept
+PASS  za unused ib0 reject
+---
+m16-mtf-za: pass=7 fail=0
+PASS  shapep Le01 altAB n=22
+PASS  shapep Le01 altAB n=23
+PASS  shapep Le01 altAB n=35
+PASS  shapep Le01 altAB n=100
+PASS  shapep Le01 altAB n=1000
+PASS  shapep Le05 altAB n=22
+PASS  shapep Le05 altAB n=23
+PASS  shapep Le05 altAB n=35
+PASS  shapep Le05 altAB n=100
+PASS  shapep Le05 altAB n=1000
+PASS  shapep Le09 altAB n=22
+PASS  shapep Le09 altAB n=23
+PASS  shapep Le09 altAB n=35
+PASS  shapep Le09 altAB n=100
+PASS  shapep Le09 altAB n=1000
+PASS  shapep Le01 period7 n=28
+PASS  shapep Le01 period7 n=29
+PASS  shapep Le01 period7 n=100
+PASS  shapep Le05 period7 n=28
+PASS  shapep Le05 period7 n=29
+PASS  shapep Le05 period7 n=100
+PASS  shapep Le09 period7 n=28
+PASS  shapep Le09 period7 n=29
+PASS  shapep Le09 period7 n=100
+PASS  shapep Le05 p3 n=100
+PASS  shapep Le05 p4 n=100
+PASS  shapep Le05 p5 n=100
+PASS  shapep Le05 p6 n=100
+PASS  shapep Le05 p8 n=100
+PASS  shapep Le01 p8-alpha n=100
+PASS  shapep Le09 p8-alpha n=100
+PASS  shapep Le01 p3 n=100
+PASS  shapep Le09 p3 n=100
+PASS  shapep-any Le05 p8-iota-fallback n=100
+PASS  shapep Le00 altAB n=100
+PASS  shapep Le00 period7 n=100
+PASS  shapep Le01 AABA400 pin
+PASS  shapep Le05 AABA400 pin
+PASS  shapep Le09 AABA400 pin
+PASS  shapep N35 pin
+PASS  shapep p7-100 pin
+PASS  shapep-det Le05 altAB35 n=35
+PASS  shapep-det Le05 period7-100 n=100
+PASS  eb4 Le05 short-near n=256
+PASS  eb4 Le05 far-then-near n=640
+PASS  eb4 Le05 run-B-run n=81
+PASS  eb4 Le05 altAB-break n=101
+---
+m16-shapep-eb4: pass=47 fail=0
+PASS  c21 mc11-P2 reject D=14
+PASS  c21 mc11-P2 control D=16
+PASS  c21 mc13 reject D=16
+PASS  c21 mc13 control D=18
+PASS  c21 mc19-fresh22 reject D=22
+PASS  c21 mc19-fresh22 control D=24
+PASS  c21 mc100 reject D=103
+PASS  c21 mc100 control D=105
+PASS  c21 mc261-max1B reject D=264
+PASS  c21 mc261-max1B control D=266
+PASS  c21 mc262-ffu32 reject D=265
+PASS  c21 mc262-ffu32 control D=267
+PASS  c21 mc19-t1rep3 reject D=22
+PASS  c21 mc19-t1rep3 control D=24
+PASS  c21 mc19-t1newdist reject D=22
+PASS  c21 mc19-t1newdist control D=24
+PASS  c21 clamp match-overhang accept
+---
+m19-c21: pass=17 fail=0
+PASS  cap-api ds=65536 cap=1536
+PASS  cap-api ds=65536 cap=64
+PASS  cap-api ds=65536 cap=1
+PASS  cap-api ds=65536 cap=0
+PASS  cap-api ds=65536 big-dst
+PASS  cap-api ds=1526727168 cap=1536
+PASS  cap-api ds=1526727168 cap=1024
+PASS  cli enc e05
+PASS  cli dec full roundtrip
+PASS  cli dec env-unset full
+PASS  cli dec small-env prefix
+PASS  cli dec env0 walk-full
+PASS  cli dec giant-1536
+PASS  cli dec corrupt exit10
+PASS  cli enc bare-0 exit10
+PASS  cli enc e02 exit10
+---
+m19-cli-cap: pass=16 fail=0
+PASS  m12 L0 n=62880
+PASS  m12 L0 n=62881
+PASS  m12 L0 n=62882
+PASS  m12 L0 n=65535
+PASS  m12 L0 n=65536
+PASS  m12 L0 n=100000
+PASS  m12 run Le01 n=62881
+PASS  m12 run Le05 n=62881
+PASS  m12 run Le09 n=62881
+---
+m19-m12: pass=9 fail=0
+PASS  plong Le01 AABA100 28B pin
+PASS  plong Le05 AABA100 28B pin
+PASS  plong Le09 AABA100 28B pin
+PASS  plong-comp Le00 AABA n=100
+PASS  plong-raw Le01 AABA n=42
+PASS  plong-comp Le01 AABA n=43
+PASS  plong-raw Le05 AABA n=42
+PASS  plong-comp Le05 AABA n=43
+PASS  plong-raw Le09 AABA n=42
+PASS  plong-comp Le09 AABA n=43
+PASS  plong-raw Le01 AABA n=40
+PASS  plong-raw Le01 AAAB n=40
+PASS  plong-raw Le01 AABABA n=40
+PASS  plong-raw Le05 AABA n=40
+PASS  plong-raw Le05 AAAB n=40
+PASS  plong-raw Le05 AABABA n=40
+PASS  plong-raw Le09 AABA n=40
+PASS  plong-raw Le09 AAAB n=40
+PASS  plong-raw Le09 AABABA n=40
+PASS  plong-comp Le01 AABA n=64
+PASS  plong-comp Le05 AABA n=64
+PASS  plong-comp Le09 AABA n=64
+PASS  plong-comp Le01 AABA n=100
+PASS  plong-comp Le05 AABA n=100
+PASS  plong-comp Le09 AABA n=100
+PASS  plong-comp Le01 AABA n=200
+PASS  plong-comp Le05 AABA n=200
+PASS  plong-comp Le09 AABA n=200
+PASS  plong-comp Le01 AABA n=300
+PASS  plong-comp Le05 AABA n=300
+PASS  plong-comp Le09 AABA n=300
+PASS  plong-comp Le01 AAAB n=64
+PASS  plong-comp Le05 AAAB n=64
+PASS  plong-comp Le09 AAAB n=64
+PASS  plong-comp Le01 AAAB n=100
+PASS  plong-comp Le05 AAAB n=100
+PASS  plong-comp Le09 AAAB n=100
+PASS  plong-comp Le01 AAAB n=200
+PASS  plong-comp Le05 AAAB n=200
+PASS  plong-comp Le09 AAAB n=200
+PASS  plong-comp Le01 AAAB n=300
+PASS  plong-comp Le05 AAAB n=300
+PASS  plong-comp Le09 AAAB n=300
+PASS  plong-comp Le01 AABABA n=64
+PASS  plong-comp Le05 AABABA n=64
+PASS  plong-comp Le09 AABABA n=64
+PASS  plong-comp Le01 AABABA n=100
+PASS  plong-comp Le05 AABABA n=100
+PASS  plong-comp Le09 AABABA n=100
+PASS  plong-comp Le01 AABABA n=200
+PASS  plong-comp Le05 AABABA n=200
+PASS  plong-comp Le09 AABABA n=200
+PASS  plong-comp Le01 AABABA n=300
+PASS  plong-comp Le05 AABABA n=300
+PASS  plong-comp Le09 AABABA n=300
+---
+m19-shapep-long: pass=55 fail=0
+PASS  psuf-comp Le01 p9 n=100
+PASS  psuf-comp Le05 p9 n=100
+PASS  psuf-comp Le09 p9 n=100
+PASS  psuf-comp Le01 p10 n=100
+PASS  psuf-comp Le05 p10 n=100
+PASS  psuf-comp Le09 p10 n=100
+PASS  psuf-comp Le01 p11 n=100
+PASS  psuf-comp Le05 p11 n=100
+PASS  psuf-comp Le09 p11 n=100
+PASS  psuf-comp Le01 p12 n=100
+PASS  psuf-comp Le05 p12 n=100
+PASS  psuf-comp Le09 p12 n=100
+PASS  psuf-comp Le01 p13 n=100
+PASS  psuf-comp Le05 p13 n=100
+PASS  psuf-comp Le09 p13 n=100
+PASS  psuf-comp Le01 p14 n=100
+PASS  psuf-comp Le05 p14 n=100
+PASS  psuf-comp Le09 p14 n=100
+PASS  psuf-comp Le01 p15 n=100
+PASS  psuf-comp Le05 p15 n=100
+PASS  psuf-comp Le09 p15 n=100
+PASS  psuf-comp Le01 p16 n=100
+PASS  psuf-comp Le05 p16 n=100
+PASS  psuf-comp Le09 p16 n=100
+PASS  psuf-comp Le01 p17 n=100
+PASS  psuf-comp Le05 p17 n=100
+PASS  psuf-comp Le09 p17 n=100
+PASS  psuf-comp Le01 p18 n=100
+PASS  psuf-comp Le05 p18 n=100
+PASS  psuf-comp Le09 p18 n=100
+PASS  psuf-comp Le01 p19 n=100
+PASS  psuf-comp Le05 p19 n=100
+PASS  psuf-comp Le09 p19 n=100
+PASS  psuf-comp Le01 p20 n=100
+PASS  psuf-comp Le05 p20 n=100
+PASS  psuf-comp Le09 p20 n=100
+PASS  psuf-comp Le01 p21 n=100
+PASS  psuf-comp Le05 p21 n=100
+PASS  psuf-comp Le09 p21 n=100
+PASS  psuf-comp Le01 p22 n=100
+PASS  psuf-comp Le05 p22 n=100
+PASS  psuf-comp Le09 p22 n=100
+PASS  psuf-comp Le01 p23 n=100
+PASS  psuf-comp Le05 p23 n=100
+PASS  psuf-comp Le09 p23 n=100
+PASS  psuf-comp Le01 p24 n=100
+PASS  psuf-comp Le05 p24 n=100
+PASS  psuf-comp Le09 p24 n=100
+PASS  psuf-comp Le01 p25 n=100
+PASS  psuf-comp Le05 p25 n=100
+PASS  psuf-comp Le09 p25 n=100
+PASS  psuf-comp Le01 p26 n=100
+PASS  psuf-comp Le05 p26 n=100
+PASS  psuf-comp Le09 p26 n=100
+PASS  psuf-comp Le01 p27 n=100
+PASS  psuf-comp Le05 p27 n=100
+PASS  psuf-comp Le09 p27 n=100
+PASS  psuf-comp Le01 p28 n=100
+PASS  psuf-comp Le05 p28 n=100
+PASS  psuf-comp Le09 p28 n=100
+PASS  psuf-comp Le01 p29 n=100
+PASS  psuf-comp Le05 p29 n=100
+PASS  psuf-comp Le09 p29 n=100
+PASS  psuf-comp Le01 p30 n=100
+PASS  psuf-comp Le05 p30 n=100
+PASS  psuf-comp Le09 p30 n=100
+PASS  psuf-comp Le01 p31 n=100
+PASS  psuf-comp Le05 p31 n=100
+PASS  psuf-comp Le09 p31 n=100
+PASS  psuf-comp Le01 p32 n=100
+PASS  psuf-comp Le05 p32 n=100
+PASS  psuf-comp Le09 p32 n=100
+PASS  psuf-raw Le05 p9 n=35
+PASS  psuf-comp Le05 p9 n=36
+PASS  psuf-raw Le05 p32 n=58
+PASS  psuf-comp Le01 p12 n=200
+PASS  psuf-comp Le01 p9 n=400
+PASS  psuf-comp Le05 p12 n=200
+PASS  psuf-comp Le05 p9 n=400
+PASS  psuf-comp Le09 p12 n=200
+PASS  psuf-comp Le09 p9 n=400
+PASS  psuf-comp Le00 p9 n=100
+PASS  psuf-comp Le00 p12 n=100
+PASS  psuf-raw Le00 p32 n=100
+PASS  psuf-raw Le01 AABCDEFGA n=40
+PASS  psuf-raw Le05 AABCDEFGA n=40
+PASS  psuf-raw Le09 AABCDEFGA n=40
+PASS  psuf-shape Le05 harmonic p2 n=100
+PASS  psuf-shape Le05 harmonic p4 n=100
+PASS  psuf-shape Le05 harmonic p6 n=100
+PASS  psuf-shape Le05 suf p12 n=100
+---
+m21-shapep-suf: pass=91 fail=0
+PASS  wrap P1 lit-wrap refuse
+PASS  wrap P3 lit-max refuse
+PASS  wrap P2 match-wrap refuse
+PASS  wrap P4 match-mcmax refuse
+PASS  wrap P6 match-min2 accept
+PASS  wrap P2b exact-fill accept
+PASS  wrap P2c C21 refuse
+PASS  wrap P5 L0-run accept
+---
+m21-wrap-split: pass=8 fail=0
+PASS  e2a L0 n=16384
+PASS  e2a L0 n=16385
+PASS  e2a L0 n=16393
+PASS  e2a L0 n=16394
+PASS  e2a L0 n=16395
+PASS  e2a L0 n=16396
+PASS  e2a L0 n=16397
+PASS  e2a L0 n=16398
+PASS  e2a L0 n=16399
+PASS  e2a L0 n=22027
+PASS  e2a L0 n=22027-41
+PASS  e2a L0 n=32768
+PASS  e2a L0 n=49153
+PASS  e2a L0 n=49154
+PASS  e2a L0 n=49165
+PASS  e2a L0 n=49166
+PASS  e2a L0 n=49167
+PASS  e2a L0 n=62880
+PASS  e2a L0 n=62881
+PASS  e2a L0 n=62882
+PASS  e2a L0 n=65535
+PASS  e2a-nosplit Le01 n=22027
+PASS  e2a-nosplit Le01 n=49166
+PASS  e2a-nosplit Le05 n=22027
+PASS  e2a-nosplit Le05 n=49166
+PASS  e2a-nosplit Le09 n=22027
+PASS  e2a-nosplit Le09 n=49166
+---
+m22-e2a: pass=27 fail=0
+PASS  shaper-comp Le01 12+12 n=24
+PASS  shaper-comp Le01 3x10 n=30
+PASS  shaper-comp Le01 12+20 n=32
+PASS  shaper-comp Le01 4x8-E2c n=32
+PASS  shaper-comp Le01 300+12 n=312
+PASS  shaper-comp Le05 12+12 n=24
+PASS  shaper-comp Le05 3x10 n=30
+PASS  shaper-comp Le05 12+20 n=32
+PASS  shaper-comp Le05 4x8-E2c n=32
+PASS  shaper-comp Le05 300+12 n=312
+PASS  shaper-comp Le09 12+12 n=24
+PASS  shaper-comp Le09 3x10 n=30
+PASS  shaper-comp Le09 12+20 n=32
+PASS  shaper-comp Le09 4x8-E2c n=32
+PASS  shaper-comp Le09 300+12 n=312
+PASS  shaper-comp Le05 5x11 n=55
+PASS  shaper-comp Le05 2x100 n=200
+PASS  shaper-comp Le05 6x6-E2c n=36
+PASS  shaper-raw Le01 tier1 n=6
+PASS  shaper-raw Le01 tier2 n=20
+PASS  shaper-raw Le01 deqfo n=15
+PASS  shaper-raw Le01 shortrun n=26
+PASS  shaper-raw Le01 boundary n=22
+PASS  shaper-raw Le01 tier2-long n=30
+PASS  shaper-raw Le01 huf-k11 n=55
+PASS  shaper-raw Le05 tier1 n=6
+PASS  shaper-raw Le05 tier2 n=20
+PASS  shaper-raw Le05 deqfo n=15
+PASS  shaper-raw Le05 shortrun n=26
+PASS  shaper-raw Le05 boundary n=22
+PASS  shaper-raw Le05 tier2-long n=30
+PASS  shaper-raw Le05 huf-k11 n=55
+PASS  shaper-raw Le09 tier1 n=6
+PASS  shaper-raw Le09 tier2 n=20
+PASS  shaper-raw Le09 deqfo n=15
+PASS  shaper-raw Le09 shortrun n=26
+PASS  shaper-raw Le09 boundary n=22
+PASS  shaper-raw Le09 tier2-long n=30
+PASS  shaper-raw Le09 huf-k11 n=55
+PASS  shaper-raw Le00 L0-norun n=24
+PASS  shaper-raw Le00 L0-norun n=30
+PASS  shaper-cap
+---
+m22-shaper: pass=42 fail=0
+PASS  m23 P2 match-wrap refuse
+PASS  m23 P4 match-mcmax refuse
+PASS  m23 match-wrap min-extra refuse
+PASS  m23 match-wrap max-extra refuse
+PASS  m23 match mc-MAX overflow refuse
+PASS  m23 match mc-MAX-2 clamp accept
+PASS  m23 lit-wrap hold refuse
+PASS  m23 lit-wrap min-extra refuse
+PASS  m23 exact-fill accept
+PASS  m23 exact-fill clamp pair accept
+PASS  m23 C21 refuse
+PASS  m23 C21 control accept
+---
+m23-match-wrap: pass=12 fail=0
+PASS  m24-e2a-tail L0 n=16393
+PASS  m24-e2a-tail L0 n=16394
+PASS  m24-e2a-tail L0 n=16395
+PASS  m24-e2a-tail L0 n=16396
+PASS  m24-e2a-tail L0 n=16397
+PASS  m24-e2a-tail L0 n=16394-41
+PASS  m24-e2a-tail L0 n=16397-41
+PASS  m24-e2a-tail L0 n=16398
+PASS  m24-e2a-tail L0 n=49161
+PASS  m24-e2a-tail L0 n=49162
+PASS  m24-e2a-tail L0 n=49163
+PASS  m24-e2a-tail L0 n=49164
+PASS  m24-e2a-tail L0 n=49165
+PASS  m24-e2a-tail L0 n=49162-41
+PASS  m24-e2a-tail L0 n=49165-41
+PASS  m24-e2a-tail L0 n=49166
+PASS  m24-e2a-tail L0 n=22027
+PASS  m24-e2a-tail L0 n=62881
+---
+m24-e2a-tail: pass=18 fail=0
+PASS  m24 match overlong u8 accept
+PASS  m24 match 1B u8 accept
+PASS  m24 match overlong u254 accept
+PASS  m24 match 1B u254 accept
+PASS  m24 match 5B u255 accept
+PASS  m24 match 1B u254 clamp accept
+PASS  m24 match 5B u254 short accept
+PASS  m24 lit overlong u16 accept
+PASS  m24 lit 1B u16 accept
+PASS  m24 lit overlong u254 accept
+PASS  m24 lit 1B u254 accept
+PASS  m24 lit 5B u255 accept
+PASS  m24 slack L0 exact accept
+PASS  m24 slack L0 pad00 accept
+PASS  m24 slack L0 padFF accept
+PASS  m24 slack L0 pad2 accept
+PASS  m24 slack rep pad accept
+PASS  m24 underlong L0 refuse
+PASS  m24 underlong rep refuse
+---
+m24-u6q-dec: pass=19 fail=0
+PASS  shaper12-comp Le01 X1+A12+B12 n=25
+PASS  shaper12-comp Le01 A12+X1+B12-lit2 n=25
+PASS  shaper12-comp Le05 X1+A12+B12 n=25
+PASS  shaper12-comp Le05 A12+X1+B12-lit2 n=25
+PASS  shaper12-comp Le09 X1+A12+B12 n=25
+PASS  shaper12-comp Le09 A12+X1+B12-lit2 n=25
+PASS  shaper12-comp Le05 X2+A12+B12 n=26
+PASS  shaper12-comp Le05 X1+A24 n=25
+PASS  shaper12-comp Le05 X1+A20+B12 n=33
+PASS  shaper12-comp Le05 X1+A300+B12 n=313
+PASS  shaper12-comp Le05 3singleton-lit2 n=39
+PASS  shaper12-L0 X1+A12+B12 n=25
+PASS  shaper12-L0 A12+X1+B12 n=25
+PASS  shaper12-L0 3singleton n=39
+PASS  shaper12-cap
+---
+m25-shaper12: pass=15 fail=0
+PASS  shaper12-veto Le01 trailing-short n=25
+PASS  shaper12-veto Le01 interior-r2 n=26
+PASS  shaper12-veto Le01 adjacent-shorts n=26
+PASS  shaper12-veto Le01 tier1 n=13
+PASS  shaper12-veto Le01 tier2 n=24
+PASS  shaper12-veto Le01 lit-huf n=130
+PASS  shaper12-veto Le05 trailing-short n=25
+PASS  shaper12-veto Le05 interior-r2 n=26
+PASS  shaper12-veto Le05 adjacent-shorts n=26
+PASS  shaper12-veto Le05 tier1 n=13
+PASS  shaper12-veto Le05 tier2 n=24
+PASS  shaper12-veto Le05 lit-huf n=130
+PASS  shaper12-veto Le09 trailing-short n=25
+PASS  shaper12-veto Le09 interior-r2 n=26
+PASS  shaper12-veto Le09 adjacent-shorts n=26
+PASS  shaper12-veto Le09 tier1 n=13
+PASS  shaper12-veto Le09 tier2 n=24
+PASS  shaper12-veto Le09 lit-huf n=130
+---
+m25-shaper12-veto: pass=18 fail=0
+PASS  shaper12b-comp Le01 A14+X2+B14 n=30
+PASS  shaper12b-comp Le01 X1+Y1+A13+B13-lead11 n=28
+PASS  shaper12b-comp Le01 A13+X1+Y1+B13-G2-11 n=28
+PASS  shaper12b-comp Le05 A14+X2+B14 n=30
+PASS  shaper12b-comp Le05 X1+Y1+A13+B13-lead11 n=28
+PASS  shaper12b-comp Le05 A13+X1+Y1+B13-G2-11 n=28
+PASS  shaper12b-comp Le09 A14+X2+B14 n=30
+PASS  shaper12b-comp Le09 X1+Y1+A13+B13-lead11 n=28
+PASS  shaper12b-comp Le09 A13+X1+Y1+B13-G2-11 n=28
+PASS  shaper12b-comp Le05 A9+X2+B9+C9 n=29
+PASS  shaper12b-comp Le05 X1+A14+Y2+B14 n=31
+PASS  shaper12b-comp Le05 A300+X2+B12 n=314
+PASS  shaper12b-L0 A14+X2+B14 n=30
+PASS  shaper12b-L0 X1+Y1+A13+B13 n=28
+PASS  shaper12b-L0 A13+X1+Y1+B13 n=28
+PASS  shaper12b-cap
+---
+m26-shaper12b: pass=16 fail=0
+PASS  shaper12b-veto-flip Le01 interior-G3-12-COMP n=31
+PASS  shaper12b-veto Le01 interior-G3-111 n=27
+PASS  shaper12b-veto Le01 lead-L3-111 n=27
+PASS  shaper12b-veto Le01 lead-L3-12 n=27
+PASS  shaper12b-veto-flip Le01 trailing-short-R1-COMP n=31
+PASS  shaper12b-veto Le01 tier2 n=20
+PASS  shaper12b-veto Le01 c6-tier1 n=8
+PASS  shaper12b-veto Le01 lit-huf n=130
+PASS  shaper12b-veto-flip Le05 interior-G3-12-COMP n=31
+PASS  shaper12b-veto Le05 interior-G3-111 n=27
+PASS  shaper12b-veto Le05 lead-L3-111 n=27
+PASS  shaper12b-veto Le05 lead-L3-12 n=27
+PASS  shaper12b-veto-flip Le05 trailing-short-R1-COMP n=31
+PASS  shaper12b-veto Le05 tier2 n=20
+PASS  shaper12b-veto Le05 c6-tier1 n=8
+PASS  shaper12b-veto Le05 lit-huf n=130
+PASS  shaper12b-veto-flip Le09 interior-G3-12-COMP n=31
+PASS  shaper12b-veto Le09 interior-G3-111 n=27
+PASS  shaper12b-veto Le09 lead-L3-111 n=27
+PASS  shaper12b-veto Le09 lead-L3-12 n=27
+PASS  shaper12b-veto-flip Le09 trailing-short-R1-COMP n=31
+PASS  shaper12b-veto Le09 tier2 n=20
+PASS  shaper12b-veto Le09 c6-tier1 n=8
+PASS  shaper12b-veto Le09 lit-huf n=130
+---
+m26-shaper12b-veto: pass=24 fail=0
+PASS  e2c-veto Le01 F1-n29 n=29
+PASS  e2c-veto Le01 F2-4x8 n=32
+PASS  e2c-veto Le01 F3-n24 n=24
+PASS  e2c-veto Le01 F4-n33 n=33
+PASS  e2c-veto Le01 F5-E2bE1 n=39
+PASS  e2c-veto Le01 F6-kept-n33 n=33
+PASS  e2c-veto Le05 F1-n29 n=29
+PASS  e2c-veto Le05 F2-4x8 n=32
+PASS  e2c-veto Le05 F3-n24 n=24
+PASS  e2c-veto Le05 F4-n33 n=33
+PASS  e2c-veto Le05 F5-E2bE1 n=39
+PASS  e2c-veto Le05 F6-kept-n33 n=33
+PASS  e2c-veto Le09 F1-n29 n=29
+PASS  e2c-veto Le09 F2-4x8 n=32
+PASS  e2c-veto Le09 F3-n24 n=24
+PASS  e2c-veto Le09 F4-n33 n=33
+PASS  e2c-veto Le09 F5-E2bE1 n=39
+PASS  e2c-veto Le09 F6-kept-n33 n=33
+PASS  e2c-veto Le05 r10-kept-n34 n=34
+PASS  e2c-veto Le05 r10-kept-n25 n=25
+PASS  e2c-cap
+---
+m27-e2c-veto: pass=21 fail=0
+PASS  tokrepeat-ident Le01 lead1 n=25
+PASS  tokrepeat-ident Le01 lead2 n=26
+PASS  tokrepeat-ident Le01 litsingle n=25
+PASS  tokrepeat-ident Le01 lead1solo n=25
+PASS  tokrepeat-ident Le01 lead1len n=33
+PASS  tokrepeat-ident Le01 lead1esc n=313
+PASS  tokrepeat-ident Le01 singleton3 n=39
+PASS  tokrepeat-ident Le05 lead1 n=25
+PASS  tokrepeat-ident Le05 lead2 n=26
+PASS  tokrepeat-ident Le05 litsingle n=25
+PASS  tokrepeat-ident Le05 lead1solo n=25
+PASS  tokrepeat-ident Le05 lead1len n=33
+PASS  tokrepeat-ident Le05 lead1esc n=313
+PASS  tokrepeat-ident Le05 singleton3 n=39
+PASS  tokrepeat-ident Le09 lead1 n=25
+PASS  tokrepeat-ident Le09 lead2 n=26
+PASS  tokrepeat-ident Le09 litsingle n=25
+PASS  tokrepeat-ident Le09 lead1solo n=25
+PASS  tokrepeat-ident Le09 lead1len n=33
+PASS  tokrepeat-ident Le09 lead1esc n=313
+PASS  tokrepeat-ident Le09 singleton3 n=39
+PASS  tokrepeat-L0 lead2 n=26
+PASS  tokrepeat-L0 lead1solo n=25
+PASS  tokrepeat-L0 lead1len n=33
+PASS  tokrepeat-ident Le00 lead1esc-L0 n=313
+---
+m27-tokrepeat: pass=25 fail=0
+PASS  e2b-term Le01 T5b-pin n=39
+PASS  e2b-term Le05 T5b-pin n=39
+PASS  e2b-term Le09 T5b-pin n=39
+PASS  e2b-term Le05 sweep-n19-RAW n=19
+PASS  e2b-term Le05 sweep-n27-RAW n=27
+PASS  e2b-term Le05 sweep-n107 n=107
+PASS  e2b-term Le05 sweep-n307 n=307
+PASS  e2b-term Le05 R3-term n=35
+PASS  e2b-term Le05 R4-term n=36
+PASS  e2b-term Le05 R5-term n=37
+PASS  e2b-term Le05 R6-term n=38
+PASS  e2b-term Le05 R7-term n=39
+PASS  e2b-term Le05 R8-term n=40
+PASS  e2b-term Le05 R9-term n=41
+PASS  e2b-term Le05 gate-rem9 n=42
+PASS  e2b-term Le00 L0-F5shape n=39
+PASS  e2b-term Le00 L0-T5bshape n=39
+PASS  e2b-term Le00 L0-sweep-n107 n=107
+PASS  e2b-term Le00 L0-sweep-n307 n=307
+PASS  e2b-cap
+---
+m29-e2b-term: pass=20 fail=0
+PASS  shaper12cd-comp Le01 A1-X1+Y1+Z1+A30 n=33
+PASS  shaper12cd-comp Le01 B-A20+X1+Y1+Z1+B12 n=35
+PASS  shaper12cd-comp Le01 C-X1+A20+Y1+Z1+W1+B12 n=36
+PASS  shaper12cd-comp Le01 LR-X1+Y1+Z1+A10+B10+C10 n=33
+PASS  shaper12cd-comp Le01 E-A300+X1+Y1+Z1+B12 n=315
+PASS  shaper12cd-comp Le05 A1-X1+Y1+Z1+A30 n=33
+PASS  shaper12cd-comp Le05 B-A20+X1+Y1+Z1+B12 n=35
+PASS  shaper12cd-comp Le05 C-X1+A20+Y1+Z1+W1+B12 n=36
+PASS  shaper12cd-comp Le05 LR-X1+Y1+Z1+A10+B10+C10 n=33
+PASS  shaper12cd-comp Le05 E-A300+X1+Y1+Z1+B12 n=315
+PASS  shaper12cd-comp Le09 A1-X1+Y1+Z1+A30 n=33
+PASS  shaper12cd-comp Le09 B-A20+X1+Y1+Z1+B12 n=35
+PASS  shaper12cd-comp Le09 C-X1+A20+Y1+Z1+W1+B12 n=36
+PASS  shaper12cd-comp Le09 LR-X1+Y1+Z1+A10+B10+C10 n=33
+PASS  shaper12cd-comp Le09 E-A300+X1+Y1+Z1+B12 n=315
+PASS  shaper12cd-L0 A1 n=33
+PASS  shaper12cd-L0 B n=35
+PASS  shaper12cd-L0 C n=36
+PASS  shaper12cd-L0 LR n=33
+PASS  shaper12cd-L0 E n=315
+PASS  shaper12cd-cap
+---
+m30-shaper12cd: pass=21 fail=0
+PASS  shaper12cd-veto Le01 tier1-D15-fo16 n=15
+PASS  shaper12cd-veto Le01 lit-huf-litc13 n=42
+PASS  shaper12cd-veto Le01 rem9-rlast8 n=31
+PASS  shaper12cd-veto Le01 rem9-rlast9 n=32
+PASS  shaper12cd-veto Le01 trailing-short n=15
+PASS  shaper12cd-veto Le01 trailing-r2 n=35
+PASS  shaper12cd-veto Le05 tier1-D15-fo16 n=15
+PASS  shaper12cd-veto Le05 lit-huf-litc13 n=42
+PASS  shaper12cd-veto Le05 rem9-rlast8 n=31
+PASS  shaper12cd-veto Le05 rem9-rlast9 n=32
+PASS  shaper12cd-veto Le05 trailing-short n=15
+PASS  shaper12cd-veto Le05 trailing-r2 n=35
+PASS  shaper12cd-veto Le09 tier1-D15-fo16 n=15
+PASS  shaper12cd-veto Le09 lit-huf-litc13 n=42
+PASS  shaper12cd-veto Le09 rem9-rlast8 n=31
+PASS  shaper12cd-veto Le09 rem9-rlast9 n=32
+PASS  shaper12cd-veto Le09 trailing-short n=15
+PASS  shaper12cd-veto Le09 trailing-r2 n=35
+---
+m30-shaper12cd-veto: pass=18 fail=0
+PASS  b1 ds20 exact L16 accept
+PASS  b1 ds20 L17 clamp-xfail
+PASS  b1 ds20 L20 clamp-xfail
+PASS  b1 ds20 L28 top-xfail
+PASS  b1 ds20 L29 over refuse
+PASS  b1 ds20 L40 over refuse
+PASS  b1 ds20 L254 over refuse
+PASS  b1 ds20 L15 under refuse
+PASS  b1 ds20 L8 under refuse
+PASS  b1 ds20 L0 under refuse
+PASS  b1 ds33 exact L29 accept
+PASS  b1 ds33 L30 R8R2-xfail
+PASS  b1 ds33 L60 top-xfail
+PASS  b1 ds33 L61 over refuse
+PASS  b1 ds33 L28 under refuse
+PASS  b1 ds64 exact L60 accept
+PASS  b1 ds64 L61 over refuse
+PASS  b1 ds64 L59 under refuse
+PASS  b1 ds259 ext L255 accept
+PASS  b1 ds259 ext L256 xfail
+PASS  b1 ds259 ext L284 top-xfail
+PASS  b1 ds259 ext L285 over refuse
+PASS  b1 ds259 ext L300 over refuse
+PASS  b1 ds259 ext L254 nonmin refuse
+PASS  b1 tok C1 lowbit accept
+PASS  b1 tok C6 lowbit accept
+---
+m31-b1-len: pass=26 fail=0 xfail=0
+PASS  b3 ib1 valid accept
+PASS  b3 ib1 padFF accept
+PASS  b3 ib1 ib0 refuse
+PASS  b3 ib1 ib31 refuse
+PASS  b3 ib1 empty-payload refuse
+PASS  b3 ib4 q51-geometry accept
+PASS  b3 ib4 payloadFF accept
+PASS  b3 ib4 sum-break refuse
+---
+m31-b3-index: pass=8 fail=0
+PASS  q1 51 0-active refuse
+PASS  q1 51 2-active L4L5 refuse
+PASS  q1 51 2-active L1L5 refuse
+PASS  q1 51 tag11 active refuse
+PASS  q1 51 tag11 inactive refuse
+PASS  q1 51 L0[4]=00 refuse
+PASS  q1 51 L0[4]=07 odd refuse
+PASS  q1 51 T=1 L0[4]=06 strict refuse
+PASS  q1 51 L0[8]=00 s02 refuse
+PASS  q1 51 L0[8]=06 refuse
+PASS  q1 51 T=1 L0[8]=03 strict refuse
+PASS  q1 51 L0[0]=08 refuse
+PASS  q1 51 L0[6]=03 refuse
+PASS  q1 51 L0[1]=01 refuse
+PASS  q1 59 1-active refuse
+PASS  q1 59 3-active refuse
+PASS  q1 59 tag11 refuse
+PASS  q1 75 1-active s11 refuse
+PASS  q1 75 3-active refuse
+PASS  q1 75 tag11 refuse
+---
+m31-q1-gate: pass=20 fail=0
+PASS  skip Le00 seq RAW n=45
+PASS  skip Le00 seq RAW n=53
+PASS  skip Le00 seq RAW n=69
+PASS  skip Le00 run COMP n=100
+PASS  skip Le01 seq RAW n=45
+PASS  skip Le01 seq RAW n=53
+PASS  skip Le01 seq RAW n=69
+PASS  skip Le01 run COMP n=100
+PASS  skip Le05 seq RAW n=45
+PASS  skip Le05 seq RAW n=53
+PASS  skip Le05 seq RAW n=69
+PASS  skip Le05 run COMP n=100
+PASS  skip Le09 seq RAW n=45
+PASS  skip Le09 seq RAW n=53
+PASS  skip Le09 seq RAW n=69
+PASS  skip Le09 run COMP n=100
+PASS  skip chain51 COMP+RAW
+---
+m31-q1-skip: pass=17 fail=0
+PASS  fixa Le05 p4n26 n=26
+PASS  fixa Le09 p4n26 n=26
+PASS  fixa Le05 p16n45 n=45
+PASS  fixa Le09 p16n45 n=45
+PASS  fixa Le01 p64n100 n=100
+PASS  fixa Le05 p64n100 n=100
+PASS  fixa Le09 p64n100 n=100
+XFAIL pending Le01 p16n45 n=45 :: R3-A1 L1 probe model (oracle COMP 44B, port RAW)
+XFAIL pending Le00 alpha43 n=43 :: now COMP outlen=44: promote to comp_pin (amend landed)
+---
+m32-slots-fixa: pass=7 fail=0 xfail=2
+PASS  rep3 Le05 match-run n=22
+PASS  rep3 Le00 L0-run n=22
+PASS  multi RAW+RAW
+PASS  multi 3xRAW
+PASS  multi COMP+RAW
+XFAIL multi RAW+COMP :: walk 23 ok, decode fail-closed 0 (non-first COMP with match pending; no misdecode)
+XFAIL multi COMP+COMP :: walk 44 ok, decode fail-closed 0 (non-first COMP with match pending; no misdecode)
+---
+mtf: pass=5 fail=0 xfail=2
+PASS  bitlen-exhaust-0-3M
+PASS  bitlen-random-1M
+PASS  sb-exhaust-0-3M
+PASS  sb-edges
+PASS  sb-random-1M
+PASS  dist-split-edges-random
+p11-sb-clz: 6 PASS 0 FAIL
+PASS  w8 edges 5/5 no-MM-no-DANGER
+PASS  w8 fuzz 4000/4000 no-MM-no-DANGER
+w8skip: pass=2 fail=0
+PASS  rank-msort 4006/4006 ident
+rankmsort: cases=4006 mism=0 pass=1 fail=0
+PASS  litclose-single seed=deadbeef n=16393
+PASS  litclose-single seed=deadbeef n=16394
+PASS  litclose-single seed=deadbeef n=16402
+PASS  litclose-split seed=deadbeef n=16403
+PASS  litclose-single seed=11111111 n=16393
+PASS  litclose-single seed=11111111 n=16394
+PASS  litclose-single seed=11111111 n=16402
+PASS  litclose-split seed=11111111 n=16403
+---
+p2-tailsplit: pass=8 fail=0
+PASS  p3n1 v0 e00
+PASS  p3n1 v0 e01
+PASS  p3n1 v0 e05
+PASS  p3n1 v0 e09
+PASS  p3n1 v1 e00
+PASS  p3n1 v1 e01
+PASS  p3n1 v1 e05
+PASS  p3n1 v1 e09
+PASS  p3n1 v2 e00
+PASS  p3n1 v2 e01
+PASS  p3n1 v2 e05
+PASS  p3n1 v2 e09
+PASS  p3n1 v3 e00
+PASS  p3n1 v3 e01
+PASS  p3n1 v3 e05
+PASS  p3n1 v3 e09
+PASS  p3n1 v4 e00
+PASS  p3n1 v4 e01
+PASS  p3n1 v4 e05
+PASS  p3n1 v4 e09
+PASS  p3n1 v5 e00
+PASS  p3n1 v5 e01
+PASS  p3n1 v5 e05
+PASS  p3n1 v5 e09
+PASS  p3n1 v6 e00
+PASS  p3n1 v6 e01
+PASS  p3n1 v6 e05
+PASS  p3n1 v6 e09
+PASS  p3n1 v7 e00
+PASS  p3n1 v7 e01
+PASS  p3n1 v7 e05
+PASS  p3n1 v7 e09
+PASS  p3n1 v8 e00
+PASS  p3n1 v8 e01
+PASS  p3n1 v8 e05
+PASS  p3n1 v8 e09
+p3n1_extend: 36 pass 0 fail
+PASS  guards-null-empty
+PASS  tiny-1-2
+PASS  rmin-edges
+PASS  k-edges
+PASS  block-edges
+PASS  tail-lens
+PASS  fuzz-runs-400
+PASS  fuzz-bytes-400
+PASS  fuzz-wide-200
+p4n3_gate: pass=9 fail=0
+note  load-diff checked=24777
+PASS  load-diff
+note  heq-diff checked=864000
+PASS  heq-diff
+PASS  exact-alloc
+PASS  guard-page
+PASS  i5heq-edges
+wordload: pass=5 fail=0
+PASS  mcopy-fn0-d1-grid
+PASS  mcopy-fn0-d2-grid
+PASS  mcopy-fn0-d3-grid
+PASS  mcopy-fn0-d4-grid
+PASS  mcopy-fn0-d5-grid
+PASS  mcopy-fn0-d6-grid
+PASS  mcopy-fn0-d7-grid
+PASS  mcopy-fn0-d8-grid
+PASS  mcopy-fn0-d9-grid
+PASS  mcopy-fn0-d15-grid
+PASS  mcopy-fn0-d16-grid
+PASS  mcopy-fn0-d17-grid
+PASS  mcopy-fn0-d31-grid
+PASS  mcopy-fn0-d64-grid
+PASS  mcopy-fn1-d1-grid
+PASS  mcopy-fn1-d2-grid
+PASS  mcopy-fn1-d3-grid
+PASS  mcopy-fn1-d4-grid
+PASS  mcopy-fn1-d5-grid
+PASS  mcopy-fn1-d6-grid
+PASS  mcopy-fn1-d7-grid
+PASS  mcopy-fn1-d8-grid
+PASS  mcopy-fn1-d9-grid
+PASS  mcopy-fn1-d15-grid
+PASS  mcopy-fn1-d16-grid
+PASS  mcopy-fn1-d17-grid
+PASS  mcopy-fn1-d31-grid
+PASS  mcopy-fn1-d64-grid
+PASS  mcopy-guard-edges
+p6_mcopy pass=29 fail=0
+PASS  random-diff
+PASS  failsafe-n
+PASS  boundaries
+PASS  interleave
+PASS  sentinel
+PASS  guard-page
+u35acc: pass=6 fail=0
+pm-diff: cases=100134 mm=0 r00=44009 r11=56125 sub_lt=56029 sub_eq256=0 sub_gt=4 na=44101 maxsub=255
+PASS  pm-diff 100134 cases 0 mismatch (maxsub=255 eq256=0)
+PASS  splitemit-huf seed=deadbeef n=32768
+PASS  splitemit-huf seed=deadbeef n=65537
+PASS  splitemit-huf seed=11111111 n=32768
+PASS  splitemit-huf seed=11111111 n=65537
+---
+q2-splitemit: pass=4 fail=0
+PASS  invalid-level 0x0
+PASS  invalid-level 0x1
+PASS  invalid-level 0x5
+PASS  invalid-level 0x9
+PASS  invalid-level 0xe02
+PASS  invalid-level 0xe0f
+PASS  invalid-level 0x100
+PASS  invalid-level 0x1e05
+PASS  invalid-level 0x100e05
+PASS  invalid-level 0xffffffff
+PASS  invalid-level 0xfffffffb
+PASS  roundtrip Le00 empty n=0
+PASS  roundtrip Le00 n1-zero n=1
+PASS  roundtrip Le00 n1-ff n=1
+PASS  roundtrip Le00 arun-1000 n=1000
+PASS  roundtrip Le00 uni-2 n=128
+PASS  roundtrip Le00 uni-3 n=192
+PASS  roundtrip Le00 uni-4 n=256
+PASS  roundtrip Le00 uni-5 n=320
+PASS  roundtrip Le00 uni-16 n=512
+PASS  roundtrip Le00 uni-17 n=544
+PASS  roundtrip Le00 uni-256 n=2048
+PASS  roundtrip Le00 skew-exp64 n=4080
+PASS  roundtrip Le00 fib20 n=28655
+PASS  roundtrip Le00 rare1 n=4096
+PASS  roundtrip Le00 full256x16 n=4096
+PASS  roundtrip Le00 text-like n=2048
+PASS  roundtrip Le00 xorshift-3000 n=3000
+PASS  roundtrip Le00 zeros-21 n=21
+PASS  roundtrip Le00 zeros-22 n=22
+PASS  roundtrip Le00 zeros-256 n=256
+PASS  roundtrip Le00 zeros-4096 n=4096
+PASS  determinism Le00 skew-exp64 n=4080
+PASS  determinism Le00 fib20 n=28655
+PASS  determinism Le00 xorshift-3000 n=3000
+PASS  scratch Le00 skew-exp64 n=4080
+PASS  scratch Le00 text-like n=2048
+PASS  undersize Le00 text-like n=2048
+PASS  refusal Le00 text-like n=2048
+PASS  comp-emit Le00 zeros-4096 n=4096
+PASS  comp-emit Le00 fib20 n=28655
+PASS  roundtrip Le01 empty n=0
+PASS  roundtrip Le01 n1-zero n=1
+PASS  roundtrip Le01 n1-ff n=1
+PASS  roundtrip Le01 arun-1000 n=1000
+PASS  roundtrip Le01 uni-2 n=128
+PASS  roundtrip Le01 uni-3 n=192
+PASS  roundtrip Le01 uni-4 n=256
+PASS  roundtrip Le01 uni-5 n=320
+PASS  roundtrip Le01 uni-16 n=512
+PASS  roundtrip Le01 uni-17 n=544
+PASS  roundtrip Le01 uni-256 n=2048
+PASS  roundtrip Le01 skew-exp64 n=4080
+PASS  roundtrip Le01 fib20 n=28655
+PASS  roundtrip Le01 rare1 n=4096
+PASS  roundtrip Le01 full256x16 n=4096
+PASS  roundtrip Le01 text-like n=2048
+PASS  roundtrip Le01 xorshift-3000 n=3000
+PASS  roundtrip Le01 zeros-21 n=21
+PASS  roundtrip Le01 zeros-22 n=22
+PASS  roundtrip Le01 zeros-256 n=256
+PASS  roundtrip Le01 zeros-4096 n=4096
+PASS  determinism Le01 skew-exp64 n=4080
+PASS  determinism Le01 fib20 n=28655
+PASS  determinism Le01 xorshift-3000 n=3000
+PASS  scratch Le01 skew-exp64 n=4080
+PASS  scratch Le01 text-like n=2048
+PASS  undersize Le01 text-like n=2048
+PASS  refusal Le01 text-like n=2048
+PASS  comp-emit Le01 zeros-4096 n=4096
+PASS  comp-emit Le01 fib20 n=28655
+PASS  roundtrip Le05 empty n=0
+PASS  roundtrip Le05 n1-zero n=1
+PASS  roundtrip Le05 n1-ff n=1
+PASS  roundtrip Le05 arun-1000 n=1000
+PASS  roundtrip Le05 uni-2 n=128
+PASS  roundtrip Le05 uni-3 n=192
+PASS  roundtrip Le05 uni-4 n=256
+PASS  roundtrip Le05 uni-5 n=320
+PASS  roundtrip Le05 uni-16 n=512
+PASS  roundtrip Le05 uni-17 n=544
+PASS  roundtrip Le05 uni-256 n=2048
+PASS  roundtrip Le05 skew-exp64 n=4080
+PASS  roundtrip Le05 fib20 n=28655
+PASS  roundtrip Le05 rare1 n=4096
+PASS  roundtrip Le05 full256x16 n=4096
+PASS  roundtrip Le05 text-like n=2048
+PASS  roundtrip Le05 xorshift-3000 n=3000
+PASS  roundtrip Le05 zeros-21 n=21
+PASS  roundtrip Le05 zeros-22 n=22
+PASS  roundtrip Le05 zeros-256 n=256
+PASS  roundtrip Le05 zeros-4096 n=4096
+PASS  determinism Le05 skew-exp64 n=4080
+PASS  determinism Le05 fib20 n=28655
+PASS  determinism Le05 xorshift-3000 n=3000
+PASS  scratch Le05 skew-exp64 n=4080
+PASS  scratch Le05 text-like n=2048
+PASS  undersize Le05 text-like n=2048
+PASS  refusal Le05 text-like n=2048
+PASS  comp-emit Le05 zeros-4096 n=4096
+PASS  comp-emit Le05 fib20 n=28655
+PASS  roundtrip Le09 empty n=0
+PASS  roundtrip Le09 n1-zero n=1
+PASS  roundtrip Le09 n1-ff n=1
+PASS  roundtrip Le09 arun-1000 n=1000
+PASS  roundtrip Le09 uni-2 n=128
+PASS  roundtrip Le09 uni-3 n=192
+PASS  roundtrip Le09 uni-4 n=256
+PASS  roundtrip Le09 uni-5 n=320
+PASS  roundtrip Le09 uni-16 n=512
+PASS  roundtrip Le09 uni-17 n=544
+PASS  roundtrip Le09 uni-256 n=2048
+PASS  roundtrip Le09 skew-exp64 n=4080
+PASS  roundtrip Le09 fib20 n=28655
+PASS  roundtrip Le09 rare1 n=4096
+PASS  roundtrip Le09 full256x16 n=4096
+PASS  roundtrip Le09 text-like n=2048
+PASS  roundtrip Le09 xorshift-3000 n=3000
+PASS  roundtrip Le09 zeros-21 n=21
+PASS  roundtrip Le09 zeros-22 n=22
+PASS  roundtrip Le09 zeros-256 n=256
+PASS  roundtrip Le09 zeros-4096 n=4096
+PASS  determinism Le09 skew-exp64 n=4080
+PASS  determinism Le09 fib20 n=28655
+PASS  determinism Le09 xorshift-3000 n=3000
+PASS  scratch Le09 skew-exp64 n=4080
+PASS  scratch Le09 text-like n=2048
+PASS  undersize Le09 text-like n=2048
+PASS  refusal Le09 text-like n=2048
+PASS  comp-emit Le09 zeros-4096 n=4096
+PASS  comp-emit Le09 fib20 n=28655
+---
+roundtrip: pass=131 fail=0 xfail=0
+PASS  s3 fire s06-e05 oracle-ident 91B
+PASS  s3 fire s12-e05 oracle-ident 92B
+PASS  v1r1 fire s02-e01 oracle-ident 128B
+PASS  v2small fire s00-e05 oracle-ident 3792B
+PASS  vc veto s11-e09 oracle-ident 42B
+PASS  w lane0-minoverlap s04n1000-e01 oracle-ident 563B
+PASS  x btab-lastL1 s03-e01 oracle-ident 8087B
+PASS  x v1vact-v2tok12 s18n128-e01 oracle-ident 90B
+PASS  aa fixpt-v1h3 s18n65536-e01 oracle-ident 33090B
+PASS  aa btab-lastL2 s17n1025-e05 oracle-ident 95B
+PASS  aa btab-lastL2 s17n1025-e09 oracle-ident 95B
+PASS  aa u30l1decline s18n256-e01 oracle-ident 49B
+---
+s3padsim: pass=12 fail=0

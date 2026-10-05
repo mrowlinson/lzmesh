@@ -1,13 +1,52 @@
-# Performance wave history (R26–R4, newest first)
+# Performance wave history (R27–R4, newest first)
 
 Per-wave Performance folds moved out of `README.md` (R26 docs
 consolidation, verbatim). Each entry keeps its original wording,
 including contemporary references ("tables above", "PGO below",
 "paragraphs below") — those point at the `README.md` Performance
 section as it read when the wave landed; current standings live
-there now. Coverage: every wave entry ever folded (R25 down to
+there now. Coverage: every wave entry ever folded (R26 down to
 R4; no R5 entry was ever recorded). Future waves append new
 entries at the top; `README.md` keeps only current standings.
+
+<a id="r27"></a>
+## R27
+
+R27 tL5d-d1 L0-SHIP (tL0d +20.1 SEP 35/35, laypad corrective-PASS,
+bytes GREEN): tL5d L0d gate (a)-(h) ALL MET (prescreen n=14 GO +
+gate n=35 tL0d +20.1% SEP / mL0d +17.9% SEP, 0 slower/suspect,
+banked medians EXACT; rel +20.1/+17.9, gap-share +31.8/+21.4pp
+gate-primary on R27 anchors; laypad v1 FAIL RECORDED as written
+(PGO-marginal misfire on code prize: banked code +20.3 ~= stack
++20.1) + corrective L2a/L2b PASS decisive (+19.5/+20.1, 0 slower,
+drop-1s agree); land (d)-adjudication SHIPS on corrective-intent,
+Q3 FORMAL concurred, no dissent; (e)-(h) FULL 0/0 + HOLD/FRESH/d77
+tip-equal NEW=0 std+PGO + units 1083/1076/0/0 x2 TRUE-scalar + smoke
+4928/0 x2 + profdata land-pin b9059d59, hunter-evidence + land-rerun
+on merged tree; T2 NO-VEHICLE: SFX ALU-floor, DO NOT BURN) + mL9
+HOLD (0 burns slot-blocked; P2b/P2c KILLED pre-burn, family CLOSED
+ever; J4-SAT KILLED tail ~0; n2-leg KILLED; E2 built 197de69e;
+Q-1/Q-2 FORMALs landed: dual-exec proven, rank hash+1 > T4). Fresh
+R27 24-cell matrix (hold tip, n=70, 23 SEP / 1 OV zL0d n=64/70, DIV
+md5 5d68b09c == R12-R27): top-6 enc order identical (mL9e −62.2 #1 /
+tL9e −61.3 / mL5e −60.1 / mL1e −59.4 / tL1e −57.7 / tL5e −57.0);
+24/24 UNMOVED; SHIP-CONFIRM tL5d +0.9/+0.5 + tL9d +0.3/+0.2; HOLD
+reconfirm d1 + V0 above tip bands; L5-neutral 9th round. PGO 6/18
+18th straight 0-slower (mL5e flip-back SEP +5.4 T3-flagged; R26 tL0e
+limitation NOT reproduced). Flexes: h3fact-union FULLY GATED
+(redundancy proven; drift-claim refuted, canon 1083/1076 stands) +
+E1 KILLED total (fold-check binary-identical) + parse-diffuse-mine
+(H1/N1 GREEN + H1N1 prototype gated; stack road KILLED, bank micro) +
+E2 BANKED (bytes-GREEN + 6/6 LIVE ~0.01-0.05%) + shards staged (flex8
+WINDOW-RUNNER, base-tiers moot under ship) + layenc instrument
+validated + H2 EPHEMERAL-SENSITIVE + docs. Memo Q/A 25/25 FORMAL
+diff 0 (10 memo + 5 memo2 cover + 10 hunter-direct). Land: 17/17
+recompute EXACT + pins + bytes land-rerun; succession r27-land2
+(parent RULING, land1 stood down). Evidence: branches
+(`lanes/r27-r27-mL9`, `lanes/r27-r27-tL5d`, `lanes/r27-r27-matrix`,
+`lanes/r27-r27-memo`, `lanes/r27-memo2`, `lanes/r27-r27-flex1` ..
+`lanes/r27-r27-flex10`, `lanes/r27-r27-dispatch`, `lanes/r27-land2`)
++ drops + answers.
 
 <a id="r26"></a>
 ## R26

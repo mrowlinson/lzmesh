@@ -1,0 +1,1 @@
+whole lines=51408 ld=8462 st=4702 cbr=6119 mov=9229 bl=2017

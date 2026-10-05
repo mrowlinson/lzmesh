@@ -1,0 +1,1 @@
+whole lines=51459 ld=8676 st=4624 cbr=6119 mov=9188 bl=2029

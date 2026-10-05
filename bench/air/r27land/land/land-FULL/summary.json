@@ -1,0 +1,19 @@
+{
+  "cells": 12784,
+  "fail_cells": 0,
+  "buckets": {},
+  "seconds": 320.1,
+  "tier": "full",
+  "seeds": [
+    0,
+    16,
+    17
+  ],
+  "selectors": [
+    "0xe00",
+    "0xe01",
+    "0xe05",
+    "0xe09"
+  ],
+  "verdict": "PASS"
+}
