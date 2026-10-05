@@ -42,9 +42,9 @@ uptime
 sysctl -n hw.ncpu 2>/dev/null
 sw_vers -productVersion 2>/dev/null
 cc --version 2>/dev/null | head -n 1
-echo "EXPECT_SHA=7b4e782912a6869871158107e5242c8df2857c7a (lanes/lane-4 R24-land base; r25-matrix)"
+echo "EXPECT_SHA=3acc740e69e1d110962bbe4d6d2983c265e42fcd (lanes/lane-4 R25-land base; r26-matrix)"
 echo "EXPECT_ENC_MD5=3fec8aa3274f901b1372be85936a77a2"
-echo "EXPECT_DEC_MD5=0dae2df417bd56d06dc30f94fa0ebd31 (R23 tL9d-D1P4 ship; R24 tL5d pure-PGO zero-src-delta; r24-land)"
+echo "EXPECT_DEC_MD5=0dae2df417bd56d06dc30f94fa0ebd31 (R23 tL9d-D1P4 ship; R24 tL5d pure-PGO zero-src-delta; R25 all-HOLD zero-src-delta; r25-land)"
 md5 "$P/src/lzmesh_enc.c" "$P/src/lzmesh_dec.c"
 [ "$(md5 -q "$P/src/lzmesh_enc.c")" = "3fec8aa3274f901b1372be85936a77a2" ] || { echo TREE-PIN-FAIL-HALT-enc; exit 1; }
 [ "$(md5 -q "$P/src/lzmesh_dec.c")" = "0dae2df417bd56d06dc30f94fa0ebd31" ] || { echo TREE-PIN-FAIL-HALT-dec; exit 1; }

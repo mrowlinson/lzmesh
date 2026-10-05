@@ -1,0 +1,61 @@
+diff --git a/port/bench/bench.c b/port/bench/bench.c
+index f743c480e..6a21bafc8 100644
+--- a/port/bench/bench.c
++++ b/port/bench/bench.c
+@@ -74,6 +74,22 @@ static int read_file(const char *path, uint8_t **out, size_t *out_len)
+ 
+ static int failures = 0;
+ 
++/* R24-WARM: pre-registered inner warmup count (symmetric enc+dec untimed
++ * uses per cell per run, AFTER the baseline warmup that pins eret0).
++ * BENCH_INNER_WARMUP unset/invalid -> 1 (loop runs 0x: byte-identical
++ * behavior, gated). k=7: timed rep1 = 8th use (past plateau). */
++static unsigned inner_warmup(void)
++{
++	const char *e = getenv("BENCH_INNER_WARMUP");
++	long k;
++	if (!e || !*e)
++		return 1u;
++	k = atol(e);
++	if (k < 1 || k > 64)
++		return 1u;
++	return (unsigned)k;
++}
++
+ static void bench_file(const char *path, const char *label, int reps,
+ 		       unsigned lmask)
+ {
+@@ -149,6 +165,33 @@ static void bench_file(const char *path, const char *label, int reps,
+ 			goto lvl_out;
+ 		}
+ 
++		/* R24-WARM: extra untimed warmup uses (k-1 enc+dec pairs).
++		 * k=1: runs 0x (identical behavior). Determinism-checked
++		 * like timed reps (same bytes or fail). */
++		{
++			unsigned iw = inner_warmup(), w;
++			for (w = 1u; w < iw; w++) {
++				size_t wr = lzmesh_encode(enc, enc_cap, src, n,
++							  escratch, level);
++				if (wr != eret0 ||
++				    memcmp(enc, first, eret0) != 0) {
++					fprintf(stderr,
++						"bench: %s L%s warmup nondet %u\n",
++						label, LNAMES[li], w);
++					failures++;
++					goto lvl_out;
++				}
++				if (lzmesh_decode(dec, n + 64, first, eret0,
++						  dscratch) != n) {
++					fprintf(stderr,
++						"bench: %s L%s warmup dec %u\n",
++						label, LNAMES[li], w);
++					failures++;
++					goto lvl_out;
++				}
++			}
++		}
++
+ 		for (r = 0; r < (size_t)reps; r++) {
+ 			uint64_t t0 = now_ns();
+ 			size_t er = lzmesh_encode(enc, enc_cap, src, n, escratch, level);
