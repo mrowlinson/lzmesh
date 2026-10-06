@@ -11462,6 +11462,19 @@ static void lzmesh_u37_g6_store(uint32_t *big, uint32_t *small,
                          hb)] = (uint32_t)ins;
 }
 
+/* M9E-SPANFLUSH: no-guard interior store (caller proves ins+8<=size;
+ * body = the guarded fast path above verbatim: fused u64 + 3 tiers).
+ * Derived from lanes/duet-enc-m5e 7d09f78bf (M5E-SPANHOIST hunks 1-2);
+ * R6 guard-hoist precedent. Sole L5 caller: i4_flush K2-span loop. */
+static inline __attribute__((always_inline)) void
+lzmesh_u37_g6_store_ng(uint32_t *big, uint32_t *small,
+                       const uint8_t *src, size_t ins, unsigned hb) {
+    uint64_t w8 = lzmesh_wl_ld64(src + ins);
+    small[lzmesh_u2_h3((uint32_t)(w8 & 0xFFFFFFu))] = (uint32_t)ins;
+    big[lzmesh_u2_h2(w8 & 0xFFFFFFFFFFull, hb)] = (uint32_t)ins;
+    big[lzmesh_u2_h1(w8 & 0xFFFFFFFFFFFFFFull, hb)] = (uint32_t)ins;
+}
+
 /* H1 big-only store (lit-gap windows never touch small; probeO3 12/12
  * e05 + 4/4 e09: skipped pos absent from small). */
 static void lzmesh_u37_g6_store_big(uint32_t *big,
@@ -12706,8 +12719,15 @@ lzmesh_i4_flush(int32_t *head, int32_t *prev,
         p->pmok = 0;
     }
     if (p->pok) {
-        for (i = p->plo; i < p->phi; i++)
-            lzmesh_u37_g6_store(big, small, src, size, i, hb);
+        /* M9E-SPANFLUSH: phi+7<=size proves every i+8<=size (max i =
+         * phi-1); empty spans run 0 iters either way. */
+        if (p->phi + 7u <= size) {
+            for (i = p->plo; i < p->phi; i++)
+                lzmesh_u37_g6_store_ng(big, small, src, i, hb);
+        } else {
+            for (i = p->plo; i < p->phi; i++)
+                lzmesh_u37_g6_store(big, small, src, size, i, hb);
+        }
         p->pok = 0;
     }
     if (p->wok) {
@@ -13830,13 +13850,18 @@ static int lzmesh_hot_bf_store(uint32_t *big, uint32_t *small,
     uint32_t p32 = (uint32_t)pos;
     if (!md->ho_trh && pos + 8u <= size) {
         uint64_t w8 = lzmesh_wl_ld64(src + pos);
-        uint32_t s3 = lzmesh_u2_h3((uint32_t)(w8 & 0xFFFFFFu));
         uint32_t s = lzmesh_u2_h2(w8 & 0xFFFFFFFFFFull, hb);
         uint32_t s1 = lzmesh_u2_h1(w8 & 0xFFFFFFFFFFFFFFull, hb);
-        uint32_t o3 = small[s3], o2 = big[s];
-        if (h3leg && (o3 == LZMESH_U2_EMPTY || o3 <= p32)) {
-            small[s3] = p32;
-            n++;
+        uint32_t o2 = big[s];
+        /* T9E-1d: h3 tier lazy (shipped h3leg=0 skips it; s3 hash +
+         * small[s3] load were unconditional). Store order unchanged. */
+        if (h3leg) {
+            uint32_t s3 = lzmesh_u2_h3((uint32_t)(w8 & 0xFFFFFFu));
+            uint32_t o3 = small[s3];
+            if (o3 == LZMESH_U2_EMPTY || o3 <= p32) {
+                small[s3] = p32;
+                n++;
+            }
         }
         if (o2 == LZMESH_U2_EMPTY || o2 <= p32) {
             big[s] = p32;
@@ -14074,22 +14099,39 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
         if (level == 9 && r6_hotbf && !(chave && cis_rep)
             && hot_last < pos) {
             size_t hp;
-            for (hp = hot_last + 1u; hp < pos; hp++) {
-                /* SHIPPED S2b: h1/h2-backfill (off1), no h3, no
-                 * marks. h3 + marks deferred pending emit-elision
-                 * (Q-5/VETOFIX: h3-leg len3-far takes are cost-losing
-                 * (token>lit); port token-emits what oracle elides).
-                 * TEMP modes: 2 = full-3tier+marks (elision-red now,
-                 * green-post-elision predicted); 3 = h12+marks
-                 * (S2c tier-split bisect). */
+            /* T9E-1b (zero-scan take-interior skip): every L9 take
+             * marks [m,end] ycon-consumed (1s, never cleared) and
+             * last_m/last_end = most recent take. If (hot_last,pos)
+             * lies inside that span, E1 below would skip every hp:
+             * advance last without scanning (bytes-identical). */
+            if (hot_last + 1u >= last_m && pos <= last_end) {
+                hot_last = pos;
+            } else {
+                /* T9E-1c: bf legs are hotbf-invariant: hoist. */
                 int bf_h3 = (r6_hotbf == 2);
                 int bf_mk = (r6_hotbf == 2 || r6_hotbf == 3);
-                int bf_n = lzmesh_hot_bf_store(big, small, src, size,
-                                               hp, hb, &i5md, bf_h3);
-                if (bf_n > 0 && i5v != NULL && bf_mk)
-                    i5v[hp] = 1u;
+                for (hp = hot_last + 1u; hp < pos; hp++) {
+                    /* GAPS-E1 (backfill span-skip): take-span interiors
+                     * (ycon-marked) are T4-span covered at drain; the
+                     * backfill copy is never read first (FULL17 IDENT).
+                     * T9E-1a: NULL check deleted (ycon non-NULL at L9:
+                     * i5_on(9)=1, ysp-or-decline). */
+                    if (i5md.ycon[hp])
+                        continue;
+                    /* SHIPPED S2b: h1/h2-backfill (off1), no h3, no
+                     * marks. h3 + marks deferred pending emit-elision
+                     * (Q-5/VETOFIX: h3-leg len3-far takes are cost-losing
+                     * (token>lit); port token-emits what oracle elides).
+                     * TEMP modes: 2 = full-3tier+marks (elision-red now,
+                     * green-post-elision predicted); 3 = h12+marks
+                     * (S2c tier-split bisect). */
+                    int bf_n = lzmesh_hot_bf_store(big, small, src, size,
+                                                   hp, hb, &i5md, bf_h3);
+                    if (bf_n > 0 && i5v != NULL && bf_mk)
+                        i5v[hp] = 1u;
+                }
+                hot_last = pos;
             }
-            hot_last = pos;
         }
         /* HOT-S2d-ywin2: chave-mark MOVED to i5v (ywin bitmap DELETED,
          * producer preserved). A-8 union (i5v OR ycon) + A-10 P0-marks
