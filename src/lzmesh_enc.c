@@ -12055,6 +12055,8 @@ lzmesh_u37_slot_best(const uint8_t *src, size_t size, size_t pos,
                                 const unsigned char *ycon,
                                 const unsigned char *ywin,
                                 int *win_tier) {
+    /* HOT-S2d-ywin2: ywin vestigial (rule-only param; A-8 DELETE). */
+    (void)ywin;
     uint32_t q;
     uint64_t p11_w8 = 0u;
     int p11_fused;
@@ -12123,15 +12125,14 @@ lzmesh_u37_slot_best(const uint8_t *src, size_t size, size_t pos,
                 || dist >= lzmesh_p3_filt_maxd[ln < 6u ? ln : 6u])
                 return 0;
             /* YF: h3 source-gate (gated; miss = fall through). Allow
-             * landed (i5v), winpos (queried+won), take-consumed [m,end],
-             * pos0-direct; decline never-touched flood-S. Blanket
-             * visited-gate falsified battery-wide (121 NEW); span/peek
-             * marks superseded (subsumed by consumed/winpos; s06@66 S47 =
-             * winpos HIT vs s09big@238090 never-queried MISS). */
+             * landed (i5v), take-consumed [m,end], pos0-direct; decline
+             * never-touched flood-S. Blanket visited-gate falsified
+             * battery-wide (121 NEW); span/peek marks superseded.
+             * HOT-S2d-ywin2: ywin leg DELETED (A-8 subsumed + A-10:
+             * rep-win duel-P0 i5v-marked instead; union = i5v OR ycon). */
             if (level == 9 && i5v != NULL && lzmesh_yf_svisg_on()
                 && (size_t)q < size && (size_t)q > 0u && !i5v[q]
-                && (ycon == NULL || !ycon[q])
-                && (ywin == NULL || !ywin[q])) {
+                && (ycon == NULL || !ycon[q])) {
                 /* never-touched S: decline (fall to walk/dump/miss). */
             } else {
                 *blen = ln;
@@ -12206,11 +12207,11 @@ lzmesh_u37_slot_best_r0(const uint8_t *src, size_t size, size_t pos,
             if (ln < 3u
                 || dist >= lzmesh_p3_filt_maxd[ln < 6u ? ln : 6u])
                 return 0;
-            /* YF: h3 source-gate verbatim (gated; miss = fall through). */
+            /* YF: h3 source-gate verbatim (gated; miss = fall through).
+             * HOT-S2d-ywin2: ywin leg DELETED (A-8 + A-10). */
             if (level == 9 && i5v != NULL && lzmesh_yf_svisg_on()
                 && (size_t)q < size && (size_t)q > 0u && !i5v[q]
-                && (ycon == NULL || !ycon[q])
-                && (ywin == NULL || !ywin[q])) {
+                && (ycon == NULL || !ycon[q])) {
                 /* never-touched S: decline (fall to miss, as before). */
             } else {
                 *blen = ln;
@@ -12308,10 +12309,10 @@ lzmesh_u37_slot_best_r1(const uint8_t *src, size_t size, size_t pp,
                 return 0;
             /* YF: h3 source-gate (level==9 proven at all callers, so
              * the level check is dropped; remainder verbatim). */
+            /* HOT-S2d-ywin2: ywin leg DELETED (A-8 + A-10). */
             if (i5v != NULL && lzmesh_yf_svisg_on()
                 && (size_t)q < size && (size_t)q > 0u && !i5v[q]
-                && (ycon == NULL || !ycon[q])
-                && (ywin == NULL || !ywin[q])) {
+                && (ycon == NULL || !ycon[q])) {
                 /* never-touched S: decline (fall to miss, as before). */
             } else {
                 *blen = ln;
@@ -12785,13 +12786,8 @@ static int lzmesh_i5_on(int level) {
     return level == 9;
 }
 
-/* Head compare: slot content cur vs i over hd bytes. EMPTY/OOB -> differ. */
-static int lzmesh_i5_heq(const uint8_t *src, size_t size, uint32_t cur,
-                         size_t i, unsigned hd) {
-    if (cur == LZMESH_U2_EMPTY || (size_t)cur + hd > size || i + hd > size)
-        return 0;
-    return lzmesh_u2_head_eq(src + cur, src + i, hd); /* P5-W3 word cmp */
-}
+/* HOT-S2d-i5m: lzmesh_i5_heq DELETED (sole callers were the O4
+ * guard blocks; A-8 + A/B green). */
 
 /* O3 narrow opt-outs (default 1 = narrow on; 0 restores pre-O3 bytes).
  * P2-GETENV: single call site (TMTLO) folded into a cached gate. */
@@ -13298,10 +13294,15 @@ static size_t lzmesh_i5_flood(uint32_t *big, uint32_t *small,
     /* P23-MIRROR V5c: i5m/i5ts vestigial (rule-only params). */
     (void)i5m;
     (void)i5ts;
+    (void)hb; /* HOT-S2c-flood3: h3-only, no hashed tier left. */
+    (void)big; /* HOT-S2c-flood3: BIG untouched now (small only). */
     size_t i;
     /* R6-T9: trace-split + size-split. Trace arm = stock verbatim.
      * Clean arm: main [fup,gm) gateless (i+7<=size proven), tail
      * [gm,ins) size-gated; pos0 guards + stores verbatim in both. */
+    /* HOT-S2c-flood3: h2/h1 flood legs DELETED (trace arm); S2b
+     * backfill covers non-run [fup,ins) h12, run interiors unread
+     * (LOOPSPEC S7). h3 leg kept (legacy verdicts, hands-off). */
     if (md->ho_trh) {
         for (i = fup; i < ins; i++) {
             if (i + 3u <= size) {
@@ -13310,22 +13311,6 @@ static size_t lzmesh_i5_flood(uint32_t *big, uint32_t *small,
                 if (small[s] != 0u) {
                     lzmesh_i5_tr(s, i, "flood3");
                     small[s] = (uint32_t)i;
-                }
-            }
-            if (i + 5u <= size) {
-                uint32_t s = lzmesh_u2_h2(lzmesh_u2_load_n(src + i, 5u),
-                                          hb);
-                if (big[s] != 0u) {
-                    lzmesh_i5_tr(s, i, "flood2");
-                    big[s] = (uint32_t)i;
-                }
-            }
-            if (md->h1 && i + 7u <= size) {
-                uint32_t s = lzmesh_u2_h1(lzmesh_u2_load_n(src + i, 7u),
-                                          hb);
-                if (big[s] != 0u) {
-                    lzmesh_i5_tr(s, i, "flood1");
-                    big[s] = (uint32_t)i;
                 }
             }
         }
@@ -13358,72 +13343,25 @@ static size_t lzmesh_i5_flood(uint32_t *big, uint32_t *small,
      * exactly (h3 iff 3<=size, h2 iff 5<=size, h1 iff h1&&7<=size),
      * so every entry-0 slot is snapshotted; aliasing (s1==s2)
      * restores the same value twice. Trace arm above untouched. */
+    /* HOT-S2c-flood3: h3-only flood (clean arm). h2/h1 mains +
+     * tails + pos0 snapshots DELETED (S2b backfill covers h12;
+     * run interiors unread). e5/e7 partition moot (h3 bound only).
+     * h3 loop + pos0 snapshot/restore verbatim. */
     {
-        /* Exclusive ends: i+3<=size <=> i<size-2 (size>=3); tiny
-         * sizes default to fup (no i qualifies; no underflow). */
         size_t e3 = (size >= 3u && ins > size - 2u) ? size - 2u : ins;
-        size_t e5 = (size >= 5u && ins > size - 4u) ? size - 4u : ins;
-        size_t e7 = (size >= 7u && ins > size - 6u) ? size - 6u : ins;
         size_t i = fup;
-        uint32_t c1_s3 = 0u, c1_s2 = 0u, c1_s1 = 0u;
-        int c1_r3 = 0, c1_r2 = 0, c1_r1 = 0;
+        uint32_t c1_s3 = 0u;
+        int c1_r3 = 0;
         if (size < 3u)
             e3 = fup;
-        if (size < 5u)
-            e5 = fup;
-        if (size < 7u)
-            e7 = fup;
-        if (e7 < fup)
-            e7 = fup;
-        if (e5 < e7)
-            e5 = e7;
-        if (e3 < e5)
-            e3 = e5;
+        if (e3 < fup)
+            e3 = fup;
         if (ins > fup) {
             if (3u <= size) {
                 c1_s3 = lzmesh_u2_h3(
                     (uint32_t)lzmesh_u2_load_n(src, 3u));
                 c1_r3 = (small[c1_s3] == 0u);
             }
-            if (5u <= size) {
-                c1_s2 = lzmesh_u2_h2(lzmesh_u2_load_n(src, 5u), hb);
-                c1_r2 = (big[c1_s2] == 0u);
-            }
-            if (md->h1 && 7u <= size) {
-                c1_s1 = lzmesh_u2_h1(lzmesh_u2_load_n(src, 7u), hb);
-                c1_r1 = (big[c1_s1] == 0u);
-            }
-        }
-        /* R8-L9NEW C2: one u64 feeds h3/h2/h1 in the mains below
-         * (P11 pattern; i+7<=size proven by e7). Tails keep stock
-         * load_n (8B read unsafe there; <=4 iters each). */
-        if (md->h1) {
-            for (; i < e7; i++) {
-                uint64_t w8 = lzmesh_wl_ld64(src + i);
-                uint32_t s = lzmesh_u2_h3(
-                    (uint32_t)(w8 & 0xFFFFFFu));
-                small[s] = (uint32_t)i;
-                s = lzmesh_u2_h2(w8 & 0xFFFFFFFFFFull, hb);
-                big[s] = (uint32_t)i;
-                s = lzmesh_u2_h1(w8 & 0xFFFFFFFFFFFFFFull, hb);
-                big[s] = (uint32_t)i;
-            }
-        } else {
-            for (; i < e7; i++) {
-                uint64_t w8 = lzmesh_wl_ld64(src + i);
-                uint32_t s = lzmesh_u2_h3(
-                    (uint32_t)(w8 & 0xFFFFFFu));
-                small[s] = (uint32_t)i;
-                s = lzmesh_u2_h2(w8 & 0xFFFFFFFFFFull, hb);
-                big[s] = (uint32_t)i;
-            }
-        }
-        for (; i < e5; i++) {
-            uint32_t s = lzmesh_u2_h3(
-                (uint32_t)lzmesh_u2_load_n(src + i, 3u));
-            small[s] = (uint32_t)i;
-            s = lzmesh_u2_h2(lzmesh_u2_load_n(src + i, 5u), hb);
-            big[s] = (uint32_t)i;
         }
         for (; i < e3; i++) {
             uint32_t s = lzmesh_u2_h3(
@@ -13432,37 +13370,13 @@ static size_t lzmesh_i5_flood(uint32_t *big, uint32_t *small,
         }
         if (c1_r3)
             small[c1_s3] = 0u;
-        if (c1_r2)
-            big[c1_s2] = 0u;
-        if (c1_r1)
-            big[c1_s1] = 0u;
     }
     return ins;
 }
 
 /* I5 walk-skip backfill (L9): [lo,hi) h1+h2 unconditional (BIG-only). */
-static void lzmesh_i5_skipback(uint32_t *big,
-                               const uint8_t *src, size_t size,
-                               size_t lo, size_t hi, unsigned hb,
-                               const lzmesh_i5_mode *md) {
-    size_t i;
-    for (i = lo; i < hi; i++) {
-        if (i + 5u <= size) {
-            uint32_t s = lzmesh_u2_h2(lzmesh_u2_load_n(src + i, 5u),
-                                      hb);
-            if (md->ho_trh)
-                lzmesh_i5_tr(s, i, "skip2");
-            big[s] = (uint32_t)i;
-        }
-        if (i + 7u <= size) {
-            uint32_t s = lzmesh_u2_h1(lzmesh_u2_load_n(src + i, 7u),
-                                      hb);
-            if (md->ho_trh)
-                lzmesh_i5_tr(s, i, "skip1");
-            big[s] = (uint32_t)i;
-        }
-    }
-}
+/* HOT-S2c1: lzmesh_i5_skipback DELETED (stride h12 backfill; HOT-S2b
+ * backfill covers (last,Q) after reads; LOOPSPEC S6). */
 
 /* I5 catchup (L9): H1 shape, conditional span (h2/h3, no h1),
  * forward windows h2-only W8. L1 MX path verbatim (unreached at L9). */
@@ -13747,15 +13661,16 @@ static int lzmesh_m1_long_take(int level, uint32_t len) {
     return lzmesh_u3_long_take(len);
 }
 
-/* === WPINS L9-J4-back1 (owner: w-pins; LANE-W-PINS) ===
- * J4 backext L9 leg, raw-back==1 only (default ON; LZMESH_WPINS_L9J4=0
- * restores the withheld-L9 behavior). S4 withheld the full L9 leg:
- * port over-stores C so it fires early and regresses (R748-e09
- * 847->844 vs o848; S4-1 reframes as bank, bank never landed).
- * Pins s11-n4097 (1089->1088 L4d924) + s06-n65536 (1611->1610 L4d66)
- * e09 both need raw-back==1 exactly; R748-class back-3 stays blocked.
+/* === WPINS L9-J4 (owner: w-pins; LANE-W-PINS) ===
+ * J4 backext L9-leg on/off (default ON; LZMESH_WPINS_L9J4=0 restores
+ * the withheld-L9 behavior). HOT-IMPL S1: leg is now HOT-backext-4
+ * full (full backmatch cap litrun, pre-empts lazy); the WPINS
+ * raw-back==1-only pin + ZDUEL-j4lit1 + cap-7 are deleted for L9.
+ * (Was: S4 withheld the full L9 leg: port over-stores C so it fires
+ * early and regresses R748-e09 847->844 vs o848. S1 byte-gate
+ * decides: FULL NEW=0 keeps, else revert.)
  * All other J4 gates unchanged (hash-only cur, litrun>=1, short,
- * dist+8<=pos, cap-7 + litrun cap). */
+ * dist+8<=pos, litrun cap). */
 static int lzmesh_wpins_l9j4_on(void) {
     static int init = 0, on = 1;
     if (!init) {
@@ -13765,17 +13680,6 @@ static int lzmesh_wpins_l9j4_on(void) {
     }
     return on;
 }
-/* ZDUEL-J4LIT1 default ON (=0 restores stock L9 raw-back1-only). */
-static int lzmesh_zduel_j4lit1_on(void) {
-    static int init = 0, on = 1;
-    if (!init) {
-        const char *e = getenv("LZMESH_ZDUEL_J4LIT1");
-        on = (e == NULL || atoi(e) != 0);
-        init = 1;
-    }
-    return on;
-}
-
 /* WPINS L1-J4-long (experimental): allow J4 backext for long takes on
  * L1 (s01-n100000sp e01: D3-shadow miss@33294, long (179,17028)@33295;
  * back12/litrun1 -> (33294,180) = oracle). Compensation for the
@@ -13827,16 +13731,8 @@ static int lzmesh_u8_relax_on(void) {
     }
     return on;
 }
-/* O4 rep-M guard opt-out (default on). LANE-O4. */
-static int lzmesh_o4_on(void) {
-    static int init = 0, on = 1;
-    if (!init) {
-        const char *e = getenv("LZMESH_O4_REPM");
-        on = (e == NULL || atoi(e) != 0);
-        init = 1;
-    }
-    return on;
-}
+/* HOT-S2d-i5m: O4 rep-M guard DELETED (A-8 O4-SAFE + writer A/B
+ * guard-off FULL 12784/0; lzmesh_o4_on + LZMESH_O4_REPM retired). */
 static int lzmesh_m4_rep_win(uint32_t clen, uint32_t cdist,
                              uint32_t n1len) {
     int64_t lhs = (int64_t)4 * ((int64_t)clen - (int64_t)n1len) + 4;
@@ -13902,6 +13798,121 @@ lzmesh_r17_yf_mark(unsigned char *d, size_t n) {
     }
 }
 
+/* HOT-S2b: L9 gap-backfill gate (LOOPSPEC S7 + A-2/A-5). Modes:
+ * 0 = off (S1 stores exactly, bisect); 1 (default) = shipped S2b
+ * (h1/h2-backfill off1 + last-tracking + run-rule, no h3, no marks);
+ * 2 = TEMP full-3tier+marks (elision-red pre-fix, Q-5); 3 = TEMP
+ * h12+marks (S2c tier-split bisect). L9-only. */
+static int lzmesh_hot_bf_on(void) {
+    static int init = 0, on = 1;
+    if (!init) {
+        const char *e = getenv("LZMESH_HOT_BF");
+        on = (e == NULL) ? 1 : atoi(e);
+        init = 1;
+    }
+    return on;
+}
+/* HOT-S2b-off1: backfill insert with skip-if-newer guard per tier.
+ * Same slots/values as lzmesh_i5_direct (fast + tail + h1 + trace
+ * structure mirrored); each tier stores iff occupant EMPTY-or-older.
+ * Adapter while early port stores exist (take-span/peek/flood place
+ * newer entries first; LWW backfill would clobber backward). S1-green
+ * proves every kept-newer occupant is also in oracle by read time.
+ * Once S2c deletes early stores, insertion order is increasing and
+ * the guard never fires (== LWW). Returns tiers stored (0..3).
+ * h3leg=0 skips the h3 tier (shipped S2b: h3 deferred pending
+ * emit-elision, Q-5/VETOFIX; h3-leg len3-far takes are cost-losing). */
+static int lzmesh_hot_bf_store(uint32_t *big, uint32_t *small,
+                               const uint8_t *src, size_t size, size_t pos,
+                               unsigned hb, const lzmesh_i5_mode *md,
+                               int h3leg) {
+    int n = 0;
+    uint32_t p32 = (uint32_t)pos;
+    if (!md->ho_trh && pos + 8u <= size) {
+        uint64_t w8 = lzmesh_wl_ld64(src + pos);
+        uint32_t s3 = lzmesh_u2_h3((uint32_t)(w8 & 0xFFFFFFu));
+        uint32_t s = lzmesh_u2_h2(w8 & 0xFFFFFFFFFFull, hb);
+        uint32_t s1 = lzmesh_u2_h1(w8 & 0xFFFFFFFFFFFFFFull, hb);
+        uint32_t o3 = small[s3], o2 = big[s];
+        if (h3leg && (o3 == LZMESH_U2_EMPTY || o3 <= p32)) {
+            small[s3] = p32;
+            n++;
+        }
+        if (o2 == LZMESH_U2_EMPTY || o2 <= p32) {
+            big[s] = p32;
+            n++;
+        }
+        if (md->h1) {
+            uint32_t o1 = big[s1];
+            if (o1 == LZMESH_U2_EMPTY || o1 <= p32) {
+                big[s1] = p32;
+                n++;
+            }
+        } else {
+            /* h1 off: direct re-stores big[s] idempotently; the s-leg
+             * above already did. Nothing more (no double count). */
+        }
+        return n;
+    }
+    if (h3leg && pos + 3u <= size) {
+        uint32_t s3 = lzmesh_u2_h3(
+            (uint32_t)lzmesh_u2_load_n(src + pos, 3u));
+        uint32_t o3 = small[s3];
+        if (o3 == LZMESH_U2_EMPTY || o3 <= p32) {
+            if (md->ho_trh)
+                lzmesh_i5_tr(s3, pos, "bfill3");
+            small[s3] = p32;
+            n++;
+        }
+    }
+    if (pos + 5u <= size) {
+        uint32_t s = lzmesh_u2_h2(lzmesh_u2_load_n(src + pos, 5u), hb);
+        uint32_t o2 = big[s];
+        if (o2 == LZMESH_U2_EMPTY || o2 <= p32) {
+            if (md->ho_trh)
+                lzmesh_i5_tr(s, pos, "bfill");
+            big[s] = p32;
+            n++;
+        }
+    }
+    if (md->h1 && pos + 7u <= size) {
+        uint32_t s1 = lzmesh_u2_h1(lzmesh_u2_load_n(src + pos, 7u), hb);
+        uint32_t o1 = big[s1];
+        if (o1 == LZMESH_U2_EMPTY || o1 <= p32) {
+            if (md->ho_trh)
+                lzmesh_i5_tr(s1, pos, "bfill1");
+            big[s1] = p32;
+            n++;
+        }
+    }
+    return n;
+}
+/* HOT-S2c-ctx: few-letter trailing-context test (A-9 K7 replacement).
+ * NORMAL <=> d1-entry (len>=7 kept) in few-letter context: distinct
+ * bytes over trailing-[m-W,m) <= 3 (2-3 bedded NORMAL, 256-ary RUN;
+ * lit/dead axes dropped, K=3 REFUTED). W=6 first (covers lit6-NORMAL
+ * bed; FULL-gate decides; window OPEN per A-9). Early-exit past the
+ * 4th distinct; bounded O(W) compares, no table. */
+static int lzmesh_hot_fewfit(const uint8_t *src, size_t m) {
+    uint8_t seen[4];
+    size_t lo = (m > 6u) ? m - 6u : 0u;
+    size_t i;
+    unsigned n = 0u;
+    for (i = lo; i < m; i++) {
+        uint8_t b = src[i];
+        unsigned k;
+        for (k = 0u; k < n; k++) {
+            if (seen[k] == b)
+                break;
+        }
+        if (k == n) {
+            if (n == 3u)
+                return 0;
+            seen[n++] = b;
+        }
+    }
+    return 1;
+}
 static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
                                int32_t *head, int32_t *prev,
                                uint32_t *big, uint32_t *small, unsigned hb,
@@ -13914,18 +13925,21 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
     size_t last_m = 0u, last_end = 0u; /* I3: most recent take span */
     int last_rep = 0; /* I3: most recent take was rep (m-hide iff so) */
     size_t i5_fup = 1u; /* I5: flood watermark (L9 only) */
+    size_t hot_last = 0u; /* HOT-S2b: oracle `last' (L9 only; pos0 stored) */
     lzmesh_i5_mode i5md;
     lzmesh_i5_mode_init(&i5md);
-    uint32_t f3arr[LZMESH_U2_H3SIZE]; /* F3 skip record (per-call) */
-    { /* tables are per-call too; init all-EMPTY */
-        /* P8-T2: memset-class fill, same bytes/bounds. */
-        memset(f3arr, 0xFF, sizeof f3arr);
-        i5md.f3skip = f3arr;
-    }
+    /* HOT-S2d-dead: f3arr/f3skip DELETED (write-only: set + memset,
+     * never read anywhere; md.f3skip stays NULL-off). */
     unsigned char *i5v = NULL; /* I5: visited bitmap (L9 only) */
-    unsigned char *i5m = NULL; /* I5-GRID-TEMP: take-m bitmap */
-    unsigned char *i5ts = NULL; /* VEB: take-start bitmap (forward-marked) */
-    unsigned char *ysp = NULL; /* YF: span+peek marks (2x size, L9 only) */
+    unsigned char *i5m = NULL; /* HOT-S2d-i5m: take-m bitmap DELETED
+     * (A-8 O4-SAFE + writer A/B: guard-off FULL 12784/0 => guard +
+     * bitmap dead). Decl + free(NULL)/passthrough kept (minimal diff,
+     * S2d-dead precedent); stays NULL. */
+    unsigned char *i5ts = NULL; /* HOT-S2d-dead: take-start bitmap
+     * DELETED (write-only: 2 marks, never read; direct/flood void
+     * the param). Decl + free(NULL)/passthrough kept (minimal diff). */
+    unsigned char *ysp = NULL; /* YF: take-consumed marks (1x size, L9
+     * only; HOT-S2d-ywin2: ywin half deleted, A-8 + A-10) */
     unsigned char *stored = NULL; /* S4: L1 chain once-bitmap */
     uint32_t litrun = 0u;
     uint32_t globrun = 0u; /* F1: recorded run (never cut-reset; tiling) */
@@ -13950,10 +13964,9 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
     int r6_t4pd = lzmesh_t4_peekdrain_on();
     int r6_t4peek = lzmesh_t4_peek_on();
     int r6_tcpr = lzmesh_tc_peekrep_on();
-    int r6_zj4 = lzmesh_zduel_j4lit1_on();
     int r6_wj4 = lzmesh_wpins_l9j4_on();
-    int r6_o4 = lzmesh_o4_on();
-    int r6_u3k = lzmesh_u3_imm_k();
+    int r6_hotbf = lzmesh_hot_bf_on(); /* HOT-S2b (R6-T9 precedent) */
+    /* HOT-S2d-i5m: r6_o4 DELETED with the guard. */    int r6_u3k = lzmesh_u3_imm_k();
     /* R12-H123-H4: lazy-once (level loop-invariant; u3_lazy_on pure).
      * L1 (lazy==0) skips the m1_long_take call in the lazy gate below;
      * L5/L9 trade one lazy call for one local test. */
@@ -13988,20 +14001,21 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
          * default-path allocs + OOM shape identical: unarmed path never
          * allocated qlink since P16 QNULL). */
         i5v = (unsigned char *)calloc(size > 0u ? size : 1u, 1u);
-        i5m = (unsigned char *)calloc(size > 0u ? size : 1u, 1u);
-        i5ts = (unsigned char *)calloc(size > 0u ? size : 1u, 1u);
-        ysp = (unsigned char *)calloc(size > 0u ? 2u * size : 2u, 1u);
-        if (i5v == NULL || i5m == NULL || i5ts == NULL || ysp == NULL) {
+        /* HOT-S2d-i5m: i5m calloc DELETED (stays NULL). */
+        /* HOT-S2d-dead: i5ts calloc DELETED (stays NULL). */
+        /* HOT-S2d-ywin2: ywin half DELETED (A-8; ysp 2x -> 1x size). */
+        ysp = (unsigned char *)calloc(size > 0u ? size : 1u, 1u);
+        if (i5v == NULL || ysp == NULL) {
             lzmesh_k2_free(&k2q); lzmesh_t4_free(&t4q);
             free(i5v);
             free(i5m);
-            free(i5ts);
             free(ysp);
             return 0;
         }
         i5md.ycon = ysp;
-        i5md.ywin = ysp + (size > 0u ? size : 1u);
-        i5ts[0] = 1u; /* first take starts at 0 */
+        /* HOT-S2d-ywin2: ywin DELETED (stays NULL; union = i5v OR ycon). */
+        i5md.ywin = NULL;
+        /* HOT-S2d-dead: i5ts[0] mark DELETED. */
     }
     if (level == 1) { /* S2: MX-slot chains (head 2^hb). */
         size_t nh = (size_t)1u << hb;
@@ -14051,9 +14065,41 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
                                 hb, recent, &clen, &cdist, &cis_rep,
                                 level, last_m, last_end, last_rep, 0,
                                 i5v, i5md.ycon, i5md.ywin);
-        /* YF: winpos mark (queried+won; L9). */
-        if (chave && level == 9 && i5md.ywin != NULL && pos < size)
-            i5md.ywin[pos] = 1u;
+        /* HOT-S2b (LOOPSPEC S7 + A-2): L9 gap backfill AFTER reads.
+         * Main-probe reads (above) -> insert whole (hot_last,pos) in
+         * increasing pos order (LWW) -> visit store below. Rep-hit:
+         * skipped (rep path runs 0 hash probes, stores nothing; last
+         * unchanged). Duel-+1s are never re-stored (last already past
+         * them). Run rule (last=end) pending A-3: interiors carry. */
+        if (level == 9 && r6_hotbf && !(chave && cis_rep)
+            && hot_last < pos) {
+            size_t hp;
+            for (hp = hot_last + 1u; hp < pos; hp++) {
+                /* SHIPPED S2b: h1/h2-backfill (off1), no h3, no
+                 * marks. h3 + marks deferred pending emit-elision
+                 * (Q-5/VETOFIX: h3-leg len3-far takes are cost-losing
+                 * (token>lit); port token-emits what oracle elides).
+                 * TEMP modes: 2 = full-3tier+marks (elision-red now,
+                 * green-post-elision predicted); 3 = h12+marks
+                 * (S2c tier-split bisect). */
+                int bf_h3 = (r6_hotbf == 2);
+                int bf_mk = (r6_hotbf == 2 || r6_hotbf == 3);
+                int bf_n = lzmesh_hot_bf_store(big, small, src, size,
+                                               hp, hb, &i5md, bf_h3);
+                if (bf_n > 0 && i5v != NULL && bf_mk)
+                    i5v[hp] = 1u;
+            }
+            hot_last = pos;
+        }
+        /* HOT-S2d-ywin2: chave-mark MOVED to i5v (ywin bitmap DELETED,
+         * producer preserved). A-8 union (i5v OR ycon) + A-10 P0-marks
+         * ALONE red 7/85: s09-self-cite (h-best@P+1 cites P pre-duel,
+         * needs pre-duel mark) + s06-B-win-flood (flood-covered P0
+         * cited later, unmarked). Producer chave-at-pos covers both
+         * (table-gated: E6-B-win table-absent still declines, no hole).
+         * Bit-identical accepts to 3-way union; saves ywin bitmap. */
+        if (chave && level == 9 && i5v != NULL && pos < size)
+            i5v[pos] = 1u;
         /* J4 backext-1: hash-only backward extension before lazy
          * (HINT-BYTEEXACT-R1 sec4: dist+8<=pos, litlen>=1, P-1
          * matches; back capped by litrun; hit skips lazy).
@@ -14082,20 +14128,10 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
                    && !lzmesh_m1_long_take(level, clen)
                    && (size_t)cdist + 8u <= pos))) {
             uint32_t j4back = lzmesh_u3_backext(src, pos, cdist);
-            if (level == 9 && j4back != 1u) {
-                /* ZDUEL-J4LIT1 (LANE-Z-DUEL): L9 back-1 of a back-2+
-                 * extension when litrun==1 (diagonal class: oracle takes
-                 * (Q,0,4,d) where port lits then takes (Q+1,1,3,d);
-                 * 16/16 divs back2-3+litrun1; TW 46/46 back1 unchanged;
-                 * S4-R748 litrun2+ stays stock). Env LZMESH_ZDUEL_J4LIT1=0
-                 * restores stock. */
-                if (litrun == 1u && j4back >= 2u
-                    && r6_zj4)
-                    j4back = 1u;
-                else
-                    j4back = 0u; /* WPINS: L9 raw-back1-only */
-            }
-            if (j4back > 7u)
+            /* HOT-IMPL S1 (HOT-backext-4): L9 takes the full backmatch
+             * capped by litrun (WPINS raw-back1-only, ZDUEL-j4lit1,
+             * and cap-7 deleted for L9; L1/L5 keep S4 cap-7). */
+            if (level != 9 && j4back > 7u)
                 j4back = 7u; /* S4: backlen-cap-7 (SCHED sec3) */
             if (j4back > litrun)
                 j4back = litrun;
@@ -14265,6 +14301,11 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
                             ? lzmesh_m4_rep_win(clen, cdist, r0len)
                             : lzmesh_u3_score(r0len, r0dist,
                                               litrun + 1u) > sc))) {
+                /* HOT-S2d-ywin2: i5v-mark rep-win (A) duel-P0 (A-10:
+                 * TC-skip-class P0 IS visit-stored 12/12+12/12; pos
+                 * still P0 here). B-win (h-leg) stays markless (E6). */
+                if (level == 9 && i5v != NULL)
+                    i5v[pos] = 1u;
                 litrun++;
                 globrun++; /* F1 */
                 pos++;
@@ -14299,10 +14340,22 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
                                           r6_u8 ? 1 : 0);
                 if (r6_n2
                     && lzmesh_j3_p2_win(clen, cdist, n2len)) {
+                    /* HOT-S2c-p2leg REVERTED (FULL 2 RED: s12/s14 sparse;
+                     * +2win take-path P+1 lit-store incl h1 is ORACLE
+                     * behavior: s14 duel@24596 +2win +1=24597 found@h1 by
+                     * duel@24622 cur=21@d25 pre-backfill. A-2 +2win-no-store
+                     * scoped to DUEL-time; take path stores. Stock back.) */
+                    /* HOT-S2d-ywin2: i5v-mark C-win duel-P0 (A-10 E10c:
+                     * C-win-P0 visit-stored 12/12; pos still P0 here). */
+                    if (i5v != NULL)
+                        i5v[pos] = 1u;
                     lzmesh_i5_direct(big, small, src, size, pos + 1u, hb,
                                      last_end, &i5md, i5m, i5ts);
                     if (i5v != NULL)
                         i5v[pos + 1u] = 1u;
+                    /* HOT-S2b: +2win-path P+1 stored -> last past it. */
+                    if (r6_hotbf)
+                        hot_last = pos + 1u;
                     litrun += 2u;
                     globrun += 2u; /* F1 */
                     pos += 2u;
@@ -14331,6 +14384,11 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
                 size_t f3_le = chal_win ? 0u : f3_pp;
                 lzmesh_i5_direct(big, small, src, size, f3_pp, hb, f3_le,
                                  &i5md, i5m, i5ts);
+                /* HOT-S2b: duel-+1 stored -> last past it (never
+                 * re-stored by backfill; A-2). TC-skip/+2win-guard:
+                 * no store, no advance (backfill covers later). */
+                if (r6_hotbf)
+                    hot_last = f3_pp;
             }
             /* J3 +2 leg (L5 only): both +1 legs lost; rep0-only at P+2
              * (hint-sec4 third challenger; u3_lazy_decide semantics).
@@ -14403,8 +14461,10 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
                     lzmesh_t4_drain(head, prev, big, small, vis, src,
                                     size, hb, level, i5v, i5m, &i5md,
                                     &t4q);
-                /* I5: flood [fup,ins) h2/h3, direct h2/h3,
-                 * skip-backfill h1+h2. Walk landing is visited. */
+                /* I5: flood [fup,ins) h2/h3, direct h2/h3.
+                 * HOT-S2c1: skip-backfill (stride h12) DELETED; HOT-S2b
+                 * backfill covers (last,Q) after Q's reads (LOOPSPEC S6:
+                 * skip pos stored by next probe). Walk landing visited. */
                 if (ins > i5_fup)
                     i5_fup = lzmesh_i5_flood(big, small, src, size,
                                              i5_fup, ins, hb, &i5md,
@@ -14417,9 +14477,7 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
                                      &i5md, i5m, i5ts);
                 if (pos + step > size)
                     step = size - pos;
-                if (step > 1u)
-                    lzmesh_i5_skipback(big, src, size, pos + 1u,
-                                       pos + step, hb, &i5md);
+                /* HOT-S2c1: skipback call deleted (see above). */
             } else {
                 /* R18-ML9 H9-SINK: S4 sunk here (non-L9 arm; first,
                  * order vs store_visit preserved). */
@@ -14487,6 +14545,31 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
         {
             size_t m = pos, end = pos + (size_t)clen;
             size_t span_lo = chal_win ? m : m + 1u;
+            /* HOT-S2b: take-commit last rule (LOOPSPEC S7 + A-2/A-7).
+             * RUN take (d1 take-len>=3, rep/hash same, NOT few-letter
+             * context): last=end (whole span [m,end) excluded from
+             * next backfill; visit-m stands as stored). NORMAL iff
+             * len<=2 (A-11: len-2-d1 NORMAL 164/0, all k/lit) OR
+             * few-letter trailing context ([m-6,m) <=3 distinct: A-9;
+             * covers A-7 CELL1 rep-d1-len4-NORMAL + s00-len5-NORMAL).
+             * Len>=3 256-ary RUN (A-7 E26 4/5/7/8/12 + H10-L4 + len-3
+             * beds). K7's len>=7 gate SUPERSEDED (A-7 NO-threshold +
+             * A-11 len-2 placement complete the axis). Else rep takes:
+             * unchanged. J4 (no duel, lazy skipped): last=m
+             * (re-covers backtrack span). Dueled hash: duel-+1 store
+             * already advanced last past m (keep); un-advanced (long
+             * take, no lazy): last=m. */
+            if (level == 9 && r6_hotbf) {
+                if (cdist == 1u && clen >= 3u
+                    && !lzmesh_hot_fewfit(src, m))
+                    hot_last = end;
+                else if (!cis_rep) {
+                    if (j4_hit)
+                        hot_last = m;
+                    else if (hot_last < m)
+                        hot_last = m;
+                }
+            }
             /* T2 SPAN40-FLUSH (L5 only; LANE-T2): NEW takes with
              * run+mlen >= 40 store take-m IMMEDIATELY (no K2 lag for
              * pm). Bedded: 6/7 big TAKESDIFF cells diverge where the
@@ -14641,38 +14724,22 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
                 }
             } else if (lzmesh_i5_on(level) && r6_t4lag) {
                 /* T4: L9 queued path (LANE-T4). NEW drains; NEW-m
-                 * immediate; span+windows (+REP-m) queue. O4 cond
-                 * mirrored from below (rep-only, append-time). */
+                 * immediate; span+windows (+REP-m) queue.
+                 * HOT-S2d-i5m: O4 cond DELETED (A-8 + A/B). */
                 lzmesh_t4_pend t4e;
-                int t4_o4_skip = 0;
                 /* R15-ML9-DRAIN: skip empty drain (same proof). */
                 if (!cis_rep
                     && t4q.n != 0u)
                     lzmesh_t4_drain(head, prev, big, small, vis, src,
                                     size, hb, level, i5v, i5m, &i5md,
                                     &t4q);
-                if (r6_o4 && cis_rep && clen == 2u
-                    && m > ins && (m - ins) == 1u && ins != 1u
-                    && m + 3u <= size) {
-                    uint32_t s = lzmesh_u2_h3(
-                        (uint32_t)lzmesh_u2_load_n(src + m, 3u));
-                    uint32_t cur = small[s];
-                    if (cur != LZMESH_U2_EMPTY && i5v != NULL
-                        && i5m != NULL && (size_t)cur < size
-                        && i5v[cur] && !i5m[cur]
-                        && lzmesh_i5_heq(src, size, cur, m, 3u))
-                        t4_o4_skip = 1;
-                }
-                /* VEB: mark take-m BEFORE direct(m) so T-COMB legs see it
-                 * (direct(m) must not self-skip; drain already ran above). */
-                if (i5m != NULL)
-                    i5m[m] = 1u;
+                /* HOT-S2d-i5m: t4_o4_skip computation DELETED. */
+                /* HOT-S2d-i5m: VEB i5m take-m mark DELETED. */
                 if (!chal_win && !pre_stored && !cis_rep)
                     lzmesh_i5_direct(big, small, src, size, m, hb, 0u,
                                      &i5md, i5m, i5ts);
                 if (i5v != NULL) {
                     i5v[m] = 1u;
-                    i5m[m] = 1u;
                 }
                 t4e.ins = ins;
                 t4e.m = m;
@@ -14681,8 +14748,8 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
                 t4e.tdist = cdist;
                 t4e.pm = 0u;
                 t4e.pmok = 0;
-                if (!chal_win && !pre_stored && cis_rep
-                    && !t4_o4_skip) {
+                /* HOT-S2d-i5m: && !t4_o4_skip DELETED (always store). */
+                if (!chal_win && !pre_stored && cis_rep) {
                     t4e.pm = m;
                     t4e.pmok = 1;
                 }
@@ -14706,45 +14773,19 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
             } else {
                 if (!chal_win && !pre_stored) {
                     if (lzmesh_i5_on(level)) { /* I5: h2/h3 only, no h1 */
-                        /* === O4 L9 rep-M joint-h3-head-eq guard (LANE-O4) ===
-                         * Bedded black-box (tmp/o4/o4repbed5.py 22/22):
-                         * oracle stores rep-take-M iff h3-occupant
-                         * empty/head-neq (noQ READ-M 6/6, Qneq READ-M 6/6);
-                         * keeps old on head-eq Q (SKIP+n1 6/6, joint: big
-                         * follows h3 under big-empty gate). NEW-M
-                         * overwrites (NEW-Q READ-M 4/4: rep-only). Bed
-                         * envelope is RL2/run1/nonfirst/lit-Q; corpus
-                         * shows STORE outside it (M/span occupants,
-                         * RL!=2, first-take s15-n1024) so fire only
-                         * inside: RL2 + run1 + nonfirst + lit-occupant
-                         * (i5v, not take-m). L9-only. */
-                        int o4_skip = 0;
-                        if (r6_o4 && cis_rep && clen == 2u
-                            && m > ins && (m - ins) == 1u && ins != 1u
-                            && m + 3u <= size) {
-                            uint32_t s = lzmesh_u2_h3(
-                                (uint32_t)lzmesh_u2_load_n(src + m, 3u));
-                            uint32_t cur = small[s];
-                            if (cur != LZMESH_U2_EMPTY && i5v != NULL
-                                && i5m != NULL && (size_t)cur < size
-                                && i5v[cur] && !i5m[cur]
-                                && lzmesh_i5_heq(src, size, cur, m, 3u))
-                                o4_skip = 1;
-                        }
-                        /* VEB: mark take-m BEFORE direct(m) so T-COMB legs
-                         * see it (direct(m) must not self-skip). */
-                        if (i5m != NULL)
-                            i5m[m] = 1u;
-                        if (!o4_skip)
-                            lzmesh_i5_direct(big, small, src, size, m, hb, 0u,
-                                             &i5md, i5m, i5ts);
+                        /* HOT-S2d-i5m: O4 L9 rep-M guard DELETED
+                         * (A-8 O4-SAFE 10/10 + writer A/B guard-off FULL
+                         * 12784/0; split oracle-invisible). Always store. */
+                        /* HOT-S2d-i5m: VEB i5m take-m mark DELETED. */
+                        lzmesh_i5_direct(big, small, src, size, m, hb, 0u,
+                                         &i5md, i5m, i5ts);
                     } else
                         lzmesh_h1_store_visit(head, prev, big, small, src,
                                               size, m, hb, level, stored);
                 }
-                if (i5v != NULL) { /* I5: take-m is visited + take-m */
+                /* HOT-S2d-i5m: i5m take-m mark DELETED (i5v kept). */
+                if (i5v != NULL) { /* I5: take-m is visited */
                     i5v[m] = 1u;
-                    i5m[m] = 1u;
                 }
                 if (lzmesh_i5_on(level)) /* I5: cond span + h2 windows */
                     lzmesh_i5_catchup(head, prev, big, small, vis, src,
@@ -14761,8 +14802,7 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
             last_rep = cis_rep;
             /* VEB: forward-mark next take start (tiling: start[k+1]=end[k];
              * lets direct/flood evaluate LIT-off/take-start legs). */
-            if (i5ts != NULL && end < size)
-                i5ts[end] = 1u;
+            /* HOT-S2d-dead: i5ts[end] mark DELETED. */
             /* YF: consumed mark [m,end] closed (L9 source-gate).
              * R17-TL9: outline helper (1 bl, base-identical shape). */
             if (level == 9 && i5md.ycon != NULL) {

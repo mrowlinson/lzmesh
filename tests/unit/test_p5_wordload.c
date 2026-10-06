@@ -3,14 +3,18 @@
  * test_p5_wordload.c — P5-W3 word-load head-op edge + differential pins.
  *
  * P5-W3 replaced the byte loops in lzmesh_u2_load_n, lzmesh_u2_head_eq,
- * lzmesh_u12_load, lzmesh_u18_load and lzmesh_i5_heq with word-at-a-time
- * loads (lzmesh_wl_*). These pins assert:
+ * lzmesh_u12_load and lzmesh_u18_load with word-at-a-time loads
+ * (lzmesh_wl_*). These pins assert:
  *  (a) value-exactness vs the base byte loops (copied verbatim below as
  *      ref_*) over n=0..8, unaligned offsets, PRNG + edge patterns;
  *  (b) no overrun reads: exact-malloc buffers (ASan tripwire) + a guard-
  *      page probe (mmap + PROT_NONE) with n bytes ending at the page edge
- *      for every n=0..8 — any fixed-8 load would fault;
- *  (c) i5_heq boundary verdicts incl size<8, EMPTY, cur+hd==size edges.
+ *      for every n=0..8 — any fixed-8 load would fault.
+ * (c) i5_heq boundary pins REMOVED (hotfix): S2d-i5m deleted the
+ * lzmesh_i5_heq wrapper outright (sole callers were the O4 guard
+ * blocks, also gone); no bounds-checked (src,size,cur,p,hd) wrapper
+ * remains in live code — callers check EMPTY/bounds manually then
+ * call lzmesh_u2_head_eq directly, which (a)/(b) already pin.
  * Includes src/lzmesh_enc.c for static access (dec.o needs no enc
  * symbols, so no archive duplicate). Exit 0 iff zero FAILs.
  */
@@ -290,72 +294,12 @@ static void t_guard_page(void)
 	w3_ok("guard-page");
 }
 
-/* (c) i5_heq boundaries: size<8, EMPTY, cur+hd==size, over-edges. */
-static void t_i5heq_edges(void)
-{
-	uint8_t src[16];
-	unsigned size, hd, t;
-	char detail[96];
-	for (t = 0; t < 200; t++) {
-		unsigned i;
-		for (i = 0; i < sizeof src; i++)
-			src[i] = (uint8_t)w3_next(256);
-		for (size = 0; size <= 10; size++) {
-			for (hd = 3; hd <= 5; hd += 2) {
-				uint32_t cur;
-				size_t p;
-				/* EMPTY cur always 0 */
-				if (lzmesh_i5_heq(src, size, LZMESH_U2_EMPTY,
-				    0, hd) != 0) {
-					snprintf(detail, sizeof detail,
-					    "empty size=%u hd=%u rep=%u",
-					    size, hd, t);
-					w3_bad("i5heq-edges", detail);
-					return;
-				}
-				for (cur = 0; cur <= (uint32_t)size + 1;
-				    cur++) {
-					for (p = 0; p <= size + 1; p++) {
-						int e = ((size_t)cur + hd <=
-						        size) &&
-						    (p + hd <= size) &&
-						    ref_head_eq(src + cur,
-						    src + p, hd);
-						if (!!lzmesh_i5_heq(src, size,
-						    cur, p, hd) != !!e) {
-							snprintf(detail,
-							    sizeof detail,
-							    "size=%u hd=%u cur=%u p=%u rep=%u",
-							    size, hd, cur,
-							    (unsigned)p, t);
-							w3_bad("i5heq-edges",
-							    detail);
-							return;
-						}
-					}
-				}
-			}
-		}
-	}
-	/* cur+hd==size exact-fit must compare (not reject) */
-	memset(src, 0x51, sizeof src);
-	if (!lzmesh_i5_heq(src, 8, 5, 0, 3u) ||
-	    lzmesh_i5_heq(src, 8, 6, 0, 3u) ||
-	    !lzmesh_i5_heq(src, 5, 0, 0, 5u) ||
-	    lzmesh_i5_heq(src, 4, 0, 0, 5u)) {
-		w3_bad("i5heq-edges", "exact-fit");
-		return;
-	}
-	w3_ok("i5heq-edges");
-}
-
 int main(void)
 {
 	t_load_diff();
 	t_heq_diff();
 	t_exact_alloc();
 	t_guard_page();
-	t_i5heq_edges();
 	printf("wordload: pass=%d fail=%d\n", w3_pass, w3_fail);
 	return w3_fail ? 1 : 0;
 }
