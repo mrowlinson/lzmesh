@@ -13938,6 +13938,232 @@ static int lzmesh_hot_fewfit(const uint8_t *src, size_t m) {
     }
     return 1;
 }
+/* === T5E5 V-TIGHT-L5: L5-only tight parse loop (owner: t5e5) ===
+ * SPEC-tL5e + A-t5e5-4-ADDENDUM: Apple runs the SAME OPS as the port
+ * (probe-count parity, same duel/backfill/store shapes, same u32
+ * tables/sizes/stride) — the +146.6 SEP gap is PER-OP CHEAPNESS +
+ * CONTROL OVERHEAD, not fewer probes. This loop runs the identical
+ * L5 op sequence (same probes/stores/extends/duels/K2-flushes in the
+ * same order with the same values) with the L1/L9 arms, env-gate
+ * snapshots, and generic dispatch compiled out, one w8 per query
+ * site, a u64-first extend, drain-empty guards (t5e2 V-drain,
+ * HOLD-gated), and the dead sc computation omitted (t5e4 SCDEAD
+ * deletion, FULL17 IDENT). Trace hooks (T4PEEK/T4TAKE/WPJ4/F1DBG)
+ * and LZMESH_SCALAR behavior preserved (hot-impl precedent).
+ * Bytes-identity: op order + values verbatim; dead-code proofs
+ * inline at each dropped check. L0/L1/L9 keep stock u37_parse. */
+
+/* T5E5-D: extend with u64-first fast path. Contract: identical return
+ * to lzmesh_u37_extend for all (src,size,pos,q,need) with q < pos
+ * (all call sites: rep qq = pos-r with r >= 1; slot q < pos checked).
+ * The u64 step reads [pos+len,pos+len+8) (gated inside size) and
+ * [q+len,q+len+8) (q <= pos-1, so strictly inside size): no new OOB
+ * vs stock. First-diff byte = ctzll(xor)>>3 (LE). need+8<=max is
+ * implied by the gate, so len <= max after the step (no u32 wrap);
+ * the NEON + scalar tails are stock-verbatim from the new len. */
+static inline __attribute__((always_inline)) uint32_t
+lzmesh_t5e5_extend(const uint8_t *src, size_t size,
+                   size_t pos, size_t q, uint32_t need) {
+    uint32_t len = need;
+    uint32_t max = (uint32_t)(size - pos);
+    if (len >= max)
+        return len;
+#if defined(__ARM_NEON)
+    if (!lzmesh_p3_scalar_on()) {
+        if (pos + (size_t)len + 8u <= size) {
+            uint64_t xa = lzmesh_wl_ld64(src + pos + len);
+            uint64_t xb = lzmesh_wl_ld64(src + q + len);
+            uint64_t d = xa ^ xb;
+            if (d != 0u)
+                return len + (uint32_t)(__builtin_ctzll(d) >> 3);
+            len += 8u;
+        }
+        while (max - len >= 16u) {
+            uint8x16_t a = vld1q_u8(src + pos + len);
+            uint8x16_t b = vld1q_u8(src + q + len);
+            uint64x2_t e64 = vreinterpretq_u64_u8(vceqq_u8(a, b));
+            uint64_t lo = vgetq_lane_u64(e64, 0);
+            uint64_t hi = vgetq_lane_u64(e64, 1);
+            if (lo == 0xFFFFFFFFFFFFFFFFull
+                && hi == 0xFFFFFFFFFFFFFFFFull) {
+                len += 16u;
+                continue;
+            }
+            if (lo != 0xFFFFFFFFFFFFFFFFull)
+                return len + (uint32_t)(__builtin_ctzll(~lo) >> 3);
+            return len + 8u + (uint32_t)(__builtin_ctzll(~hi) >> 3);
+        }
+        while (len < max && src[pos + len] == src[q + len])
+            len++;
+        return len;
+    }
+#endif
+    while (len < max && src[pos + len] == src[q + len])
+        len++;
+    return len;
+}
+
+/* T5E5-E: cur-query rep leg (nrep=3 unrolled, non-relaxed, w8 shared
+ * with the slot leg). Verbatim vs rep_best_r0 x3 (r-fuse, head widths
+ * 2/4/4, first-hit-wins); residual j>=3 loop dead (nrep==3 const).
+ * MINREP recheck dropped: extend returns >= need >= 2 by
+ * construction (scalar/neon/u64 arms only increment from need). */
+static inline __attribute__((always_inline)) int
+lzmesh_t5e5_rep3(const uint8_t *src, size_t size, size_t pos, uint64_t w8,
+                 const uint32_t recent[4],
+                 uint32_t *blen, uint32_t *bdist) {
+    uint32_t r;
+    size_t qq;
+    uint32_t ln;
+    r = recent[0];
+    if ((uint64_t)r - 1u < (uint64_t)pos) {
+        qq = pos - (size_t)r;
+        if (lzmesh_mf_head_eq_r0(w8, src + qq, 2u)) {
+            ln = lzmesh_t5e5_extend(src, size, pos, qq, 2u);
+            *blen = ln;
+            *bdist = r;
+            return 1;
+        }
+    }
+    r = recent[1];
+    if ((uint64_t)r - 1u < (uint64_t)pos) {
+        qq = pos - (size_t)r;
+        if (lzmesh_mf_head_eq_r0(w8, src + qq, 4u)) {
+            ln = lzmesh_t5e5_extend(src, size, pos, qq, 4u);
+            *blen = ln;
+            *bdist = r;
+            return 1;
+        }
+    }
+    r = recent[2];
+    if ((uint64_t)r - 1u < (uint64_t)pos) {
+        qq = pos - (size_t)r;
+        if (lzmesh_mf_head_eq_r0(w8, src + qq, 4u)) {
+            ln = lzmesh_t5e5_extend(src, size, pos, qq, 4u);
+            *blen = ln;
+            *bdist = r;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/* T5E5-E: cur-query slot cascade (non-relaxed, w8 shared with rep).
+ * Verbatim vs slot_best_r0 (huge-split fallback to stock generic
+ * with NULL bitmaps: YF gated level==9 first, NULL-safe at L5).
+ * YF/win_tier deleted (L9-only/NULL at sole caller). ln-floor
+ * disjuncts dropped (extend >= need, see rep3 note); h1 filter
+ * index folds to cap[6] (ln >= 7 const). */
+static inline __attribute__((always_inline)) int
+lzmesh_t5e5_slot3(const uint8_t *src, size_t size, size_t pos, uint64_t w8,
+                  const uint32_t *big, const uint32_t *small, unsigned hb,
+                  uint32_t *blen, uint32_t *bdist) {
+    uint32_t q;
+    uint32_t dist;
+    uint32_t ln;
+    if (size > 0xFFFFFFFFu)
+        return lzmesh_u37_slot_best(src, size, pos, big, small, hb,
+                                    blen, bdist, 0, 5, NULL,
+                                    NULL, NULL, NULL);
+    q = big[lzmesh_u2_h1(w8 & 0xFFFFFFFFFFFFFFull, hb)];
+    if ((size_t)q < pos
+        && lzmesh_mf_head_eq_r0(w8, src + q, 7u)) {
+        dist = (uint32_t)pos - q;
+        ln = lzmesh_t5e5_extend(src, size, pos, (size_t)q, 7u);
+        if (dist >= lzmesh_p3_filt_maxd[6u])
+            return 0; /* strict: winner fail = miss */
+        *blen = ln;
+        *bdist = dist;
+        return 1;
+    }
+    q = big[lzmesh_u2_h2(w8 & 0xFFFFFFFFFFull, hb)];
+    if ((size_t)q < pos
+        && lzmesh_mf_head_eq_r0(w8, src + q, 5u)) {
+        dist = (uint32_t)pos - q;
+        ln = lzmesh_t5e5_extend(src, size, pos, (size_t)q, 5u);
+        if (dist >= lzmesh_p3_filt_maxd[ln < 6u ? ln : 6u])
+            return 0; /* strict: winner fail = miss */
+        *blen = ln;
+        *bdist = dist;
+        return 1;
+    }
+    {
+        uint32_t s = lzmesh_u2_h3((uint32_t)(w8 & 0xFFFFFFu));
+        q = small[s];
+        if ((size_t)q < pos
+            && lzmesh_mf_head_eq_r0(w8, src + q, 3u)) {
+            dist = (uint32_t)pos - q;
+            ln = lzmesh_t5e5_extend(src, size, pos, (size_t)q, 3u);
+            if (dist >= lzmesh_p3_filt_maxd[ln < 6u ? ln : 6u])
+                return 0; /* strict: winner fail = miss */
+            *blen = ln;
+            *bdist = dist;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/* T5E5-E: +1/+2 rep0 peek (nrep=1, relax=1, w8/fused shared with the
+ * h1 peek). Verbatim vs generic rep_best(nrep=1, relax=1): elig is
+ * pos+2<=size only (relax skips +9); per-probe need-gate dropped
+ * (same predicate as elig, need==MINREP==2); mf fallback kept via
+ * stock mf_head_eq (relax allows tail pos+8>size). */
+static inline __attribute__((always_inline)) int
+lzmesh_t5e5_rep1(const uint8_t *src, size_t size, size_t pos,
+                 uint64_t w8, int fused, const uint32_t recent[4],
+                 uint32_t *blen, uint32_t *bdist) {
+    uint32_t r;
+    size_t qq;
+    uint32_t ln;
+    if (pos + LZMESH_U37_MINREP > size)
+        return 0;
+    r = recent[0];
+    if (r == 0u || (size_t)r > pos)
+        return 0;
+    qq = pos - (size_t)r;
+    if (!lzmesh_mf_head_eq(src + pos, w8, fused, src + qq,
+                           (size_t)qq + 8u <= size, 2u))
+        return 0;
+    ln = lzmesh_t5e5_extend(src, size, pos, qq, 2u);
+    *blen = ln;
+    *bdist = r;
+    return 1;
+}
+
+/* T5E5-E: +1 hash peek (7B-only, relax=1, w8/fused shared with rep1).
+ * Verbatim vs slot_best_h1only(relax=1) + I4 FIX-A gate folded
+ * (tier-7-implied win always passes; fail paths return 0 either
+ * way). h1 filter index folds to cap[6] (ln >= 7, see slot3 note). */
+static inline __attribute__((always_inline)) int
+lzmesh_t5e5_h1(const uint8_t *src, size_t size, size_t pos,
+               uint64_t w8, int fused,
+               const uint32_t *big, unsigned hb,
+               uint32_t *blen, uint32_t *bdist) {
+    uint32_t q;
+    uint32_t dist;
+    uint32_t ln;
+    if (pos + LZMESH_U37_MINREP > size)
+        return 0;
+    if (pos + 7u > size)
+        return 0;
+    q = big[lzmesh_u2_h1(fused ? (w8 & 0xFFFFFFFFFFFFFFull)
+                               : lzmesh_u2_load_n(src + pos, 7u),
+                         hb)];
+    if (q == LZMESH_U2_EMPTY || (size_t)q >= pos)
+        return 0;
+    if (!lzmesh_mf_head_eq(src + pos, w8, fused, src + q,
+                           (size_t)q + 8u <= size, 7u))
+        return 0;
+    dist = (uint32_t)pos - q;
+    ln = lzmesh_t5e5_extend(src, size, pos, (size_t)q, 7u);
+    if (dist >= lzmesh_p3_filt_maxd[6u])
+        return 0; /* strict: winner fail = miss */
+    *blen = ln;
+    *bdist = dist;
+    return 1;
+}
+
 static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
                                int32_t *head, int32_t *prev,
                                uint32_t *big, uint32_t *small, unsigned hb,
@@ -14887,6 +15113,359 @@ static size_t lzmesh_u37_parse(const uint8_t *src, size_t size,
     lzmesh_k2_free(&k2q); lzmesh_t4_free(&t4q);
     free(i5v); free(ysp); free(i5m); free(i5ts); /* I5 */
     free(stored); /* S4 */
+    return ntok;
+}
+
+/* T5E5-A: L5-only parse. Op order + values verbatim vs the L5 arms
+ * of stock u37_parse; L0/L1/L9 arms, snapshots, and state deleted
+ * (audit: last-span state, head-prev, stored, i5 and ysp bitmaps,
+ * hot_last, i5md, t4q all unread at L5; r6 gates except t4tr gate
+ * L9-L1 arms only; relax args are L5 literals; qbr env fns
+ * short-circuited at L5). Drains guarded
+ * by n!=0 (V-drain, t5e2 HOLD); sc omitted (SCDEAD, t5e4 IDENT);
+ * one w8 per query site (T5E5-E); extends via t5e5_extend (T5E5-D).
+ * Trace/env behavior preserved (T4PEEK/T4TAKE/WPJ4/F1DBG/SCALAR). */
+static size_t lzmesh_u37_parse_L5(const uint8_t *src, size_t size,
+                                  uint32_t *big, uint32_t *small,
+                                  unsigned hb,
+                                  lzmesh_u37_tok *toks, size_t tokcap,
+                                  unsigned char *vis,
+                                  const size_t *cuts, size_t ncut) {
+    uint32_t recent[4];
+    size_t pos = 1u, ntok = 0u, ins = 1u;
+    uint32_t litrun = 0u;
+    uint32_t globrun = 0u; /* F1: recorded run (never cut-reset; tiling) */
+    size_t ncut_seen = 0u; /* F1: cuts at/below pos (J4 backtrack exact) */
+    int qbr_cutlive = (cuts != NULL && ncut > 0u) ? 1 : 0;
+    int r6_t4tr = lzmesh_t4_trace_on();
+    unsigned j;
+    lzmesh_k2_q k2q; /* K2: T3 multi-pending FIFO (reused verbatim) */
+    k2q.v = NULL;
+    k2q.n = 0u;
+    k2q.cap = 0u;
+    lzmesh_u37_recents_init(recent);
+    if (lzmesh_f1_dbg_on())
+        fprintf(stderr, "F1DBG parse ncut=%u\n", (unsigned)ncut);
+    {
+        size_t nbig = (size_t)1u << hb;
+        memset(big, 0xFF, nbig * sizeof *big);
+        memset(small, 0xFF,
+               (size_t)LZMESH_U2_H3SIZE * sizeof *small);
+    }
+    /* H1: pos0 init-stored (B0b 18/18 take with no prior match). */
+    lzmesh_u37_g6_store(big, small, src, size, 0u, hb);
+    while (pos < size) {
+        uint32_t clen = 0u, cdist = 0u;
+        int chave, cis_rep = 0;
+        int pre_stored = 0, chal_win = 0, j4_hit = 0;
+        int j31have = 0; /* U2: +2-win skipped lit queued (K2 lag) */
+        size_t j31p1 = 0u;
+        if (pos + LZMESH_U37_MINREP > size)
+            break;
+        if (qbr_cutlive) {
+            size_t nh = 0u;
+            while (nh < ncut && pos >= cuts[nh])
+                nh++;
+            if (nh > ncut_seen) {
+                litrun = 0u;
+                ncut_seen = nh;
+            } else if (nh < ncut_seen) {
+                ncut_seen = nh; /* J4 backed across a cut: no reset */
+            }
+        }
+        /* Cur query: rep-first (heads 2/4/4), then 7B/5B/3B cascade;
+         * one w8 feeds both legs (T5E5-E). Elig verbatim (MINREP+9). */
+        {
+            uint64_t w8;
+            if (pos + LZMESH_U37_MINREP > size || pos + 9u > size) {
+                chave = 0;
+            } else {
+                w8 = lzmesh_wl_ld64(src + pos);
+                if (lzmesh_t5e5_rep3(src, size, pos, w8, recent,
+                                     &clen, &cdist)) {
+                    chave = 1;
+                    cis_rep = 1;
+                } else if (lzmesh_t5e5_slot3(src, size, pos, w8, big,
+                                             small, hb, &clen, &cdist)) {
+                    chave = 1;
+                    cis_rep = 0;
+                } else {
+                    chave = 0;
+                }
+            }
+        }
+        /* J4 backext-1 (L5 arm verbatim; m1(5,.) inlined as len>=40,
+         * Apple-pinned per A-t5e5-4-ADDENDUM; S4 cap-7 kept). */
+        if (chave && !cis_rep
+            && litrun >= 1u
+            && clen < 40u
+            && (size_t)cdist + 8u <= pos) {
+            uint32_t j4back = lzmesh_u3_backext(src, pos, cdist);
+            if (j4back > 7u)
+                j4back = 7u; /* S4: backlen-cap-7 (SCHED sec3) */
+            if (j4back > litrun)
+                j4back = litrun;
+            if (j4back > 0u) {
+                if (lzmesh_wpins_j4trace_on())
+                    fprintf(stderr, "WPJ4 L%d pos=%u back=%u len=%u d=%u lr=%u\n",
+                        5, (unsigned)pos, j4back, clen, cdist, litrun);
+                pos -= (size_t)j4back;
+                clen += j4back;
+                litrun -= j4back;
+                globrun -= j4back; /* F1 */
+                j4_hit = 1; /* extended: skip lazy, take now */
+            }
+        }
+        /* Lazy gate (h4_lazy==1 const at L5; m1 inlined; sc omitted:
+         * SCDEAD deletion, FULL17 IDENT on lanes/duet-enc-t5e4). */
+        if (chave && !cis_rep && clen < 40u && !j4_hit) {
+            uint32_t r0len = 0u, r0dist = 0u, hlen = 0u, hdist = 0u;
+            int r0have, hhave;
+            uint64_t p1w8;
+            int p1fused;
+            size_t pp;
+            /* L3: n1 peek drains the K2 queue (peekbed 6/6); empty
+             * drains skipped (V-drain, lanes/duet-enc-t5e2 HOLD). */
+            if (k2q.n != 0u)
+                lzmesh_k2_drain(NULL, NULL, big, small, vis, src,
+                                size, hb, &k2q);
+            /* H1: visited-direct before n1 peek (A4 36/36 immediate).
+             * Peek itself stores nothing (read-only). */
+            lzmesh_u37_g6_store(big, small, src, size, pos, hb);
+            pre_stored = 1;
+            /* +1 probes share one w8 (T5E5-E). Tier-7 implied for h1
+             * (I4 FIX-A gate folded, always passes). */
+            pp = pos + 1u;
+            p1fused = (pp + 8u <= size);
+            p1w8 = p1fused ? lzmesh_wl_ld64(src + pp) : 0u;
+            r0have = lzmesh_t5e5_rep1(src, size, pp, p1w8, p1fused,
+                                      recent, &r0len, &r0dist);
+            hhave = lzmesh_t5e5_h1(src, size, pp, p1w8, p1fused,
+                                   big, hb, &hlen, &hdist);
+            if (r6_t4tr)
+                fprintf(stderr,
+                        "T4PEEK pos=%u cur=%u@%u r0=%d:%u@%u h=%d:%u@%u\n",
+                        (unsigned)pos, clen, cdist, r0have, r0len,
+                        r0dist, hhave, hlen, hdist);
+            /* L2 MATH duel (rep <= / hash <, ties stay; LANE-L2). */
+            if (r0have
+                && lzmesh_l2_rep_win(clen, cdist, r0len)) {
+                litrun++;
+                globrun++; /* F1 */
+                pos++;
+                clen = r0len;
+                cdist = r0dist;
+                cis_rep = 1;
+                chal_win = 1;
+            } else if (hhave
+                && lzmesh_l2_hash_win(clen, cdist, hlen,
+                                      hdist)) {
+                litrun++;
+                globrun++; /* F1 */
+                pos++;
+                clen = hlen;
+                cdist = hdist;
+                cis_rep = 0;
+                chal_win = 1;
+            }
+            /* J3 +2 leg (L5 only, LANE-J3/J3-p2; U2 K2-lag queueing
+             * verbatim; pre-drain guarded, drains are empty here). */
+            if (!chal_win) {
+                uint32_t n2len = 0u, n2dist = 0u;
+                size_t pp2 = pos + 2u;
+                int p2fused = (pp2 + 8u <= size);
+                uint64_t p2w8 =
+                    p2fused ? lzmesh_wl_ld64(src + pp2) : 0u;
+                if (lzmesh_t5e5_rep1(src, size, pp2, p2w8, p2fused,
+                                     recent, &n2len, &n2dist)
+                    && lzmesh_j3_p2_win(clen, cdist, n2len)) {
+                    if (k2q.n != 0u)
+                        lzmesh_k2_drain(NULL, NULL, big, small, vis,
+                                        src, size, hb, &k2q);
+                    j31have = 1;
+                    j31p1 = pos + 1u;
+                    litrun += 2u;
+                    globrun += 2u; /* F1 */
+                    pos += 2u;
+                    clen = n2len;
+                    cdist = n2dist;
+                    cis_rep = 1;
+                    chal_win = 1;
+                }
+            }
+        }
+        if (!chave) {
+            /* H1: skip walk step 1+(litrun>>8), clamped at tail. */
+            size_t step = (size_t)1u + (litrun >> 8);
+            if (qbr_cutlive) {
+                size_t ci = ncut_seen;
+                while (ci < ncut && cuts[ci] <= pos)
+                    ci++;
+                if (ci < ncut && pos + step > cuts[ci])
+                    step = cuts[ci] - pos;
+            }
+            /* I4 FIX-B: skip-walk store IS a flush trigger (K2 FIFO);
+             * empty drains skipped (V-drain). */
+            if (k2q.n != 0u)
+                lzmesh_k2_drain(NULL, NULL, big, small, vis, src,
+                                size, hb, &k2q);
+            lzmesh_u37_g6_store(big, small, src, size, pos, hb);
+            if (pos + step > size)
+                step = size - pos;
+            litrun += (uint32_t)step;
+            globrun += (uint32_t)step; /* F1 */
+            pos += step;
+            continue;
+        }
+        if (ntok >= tokcap) {
+            lzmesh_k2_free(&k2q);
+            return 0;
+        }
+        {
+            int rep = cis_rep;
+            unsigned slot = 0u;
+            /* T4-TRACE (LANE-T4): per-take parse path. */
+            if (r6_t4tr)
+                fprintf(stderr,
+                        "T4TAKE m=%u run=%u len=%u dist=%u isn=%d chw=%d pre=%d chwv=%d cisrep=%d q=%u\n",
+                        (unsigned)pos, litrun, clen, cdist,
+                        rep ? 0 : 1, chal_win, pre_stored, chave,
+                        cis_rep, 0u);
+            if (rep) {
+                for (j = 0u; j < 3u; j++) {
+                    if (recent[j] == cdist) {
+                        slot = j;
+                        break;
+                    }
+                }
+            }
+            toks[ntok].litrun = globrun; /* F1: global run (tiling) */
+            toks[ntok].mlen = clen;
+            toks[ntok].dist = cdist;
+            toks[ntok].is_new = rep ? 0u : 1u;
+            toks[ntok].slot = slot;
+            ntok++;
+            if (rep)
+                lzmesh_u37_recents_rep(recent, slot);
+            else
+                lzmesh_u37_recents_push(recent, cdist);
+        }
+        /* Take catch-up (K2 lag verbatim: NEW/gapped-REP drains,
+         * U2 J3+1 queueing, abutting/gapped appends, T2 SPAN40).
+         * Drains guarded by V-drain (n!=0); t2 condition L5-folded. */
+        {
+            size_t m = pos, end = pos + (size_t)clen;
+            size_t span_lo = chal_win ? m : m + 1u;
+            int t2_big = (!cis_rep
+                && (size_t)litrun + (size_t)clen >= 40u) ? 1 : 0;
+            if ((!cis_rep || ins != m) && k2q.n != 0u)
+                lzmesh_k2_drain(NULL, NULL, big, small, vis, src,
+                                size, hb, &k2q);
+            if (j31have) {
+                lzmesh_i4_pend k2j;
+                k2j.plo = 0u;
+                k2j.phi = 0u;
+                k2j.pm = j31p1;
+                k2j.wlo = 0u;
+                k2j.wm = 0u;
+                k2j.pok = 0;
+                k2j.pmok = 1;
+                k2j.wok = 0;
+                if (!lzmesh_k2_append(&k2q, &k2j)) {
+                    lzmesh_k2_free(&k2q);
+                    return 0;
+                }
+                j31have = 0;
+            }
+            if (ins == m) {
+                lzmesh_i4_pend k2e;
+                k2e.plo = 0u;
+                k2e.phi = 0u;
+                k2e.pm = 0u;
+                k2e.wlo = 0u;
+                k2e.wm = 0u;
+                k2e.pok = 0;
+                k2e.pmok = 0;
+                k2e.wok = 0;
+                if (!chal_win && !pre_stored) {
+                    k2e.pm = m;
+                    k2e.pmok = 1;
+                }
+                k2e.plo = span_lo;
+                k2e.phi = end;
+                k2e.pok = 1;
+                if (t2_big && k2e.pmok) {
+                    /* T2 SPAN40: pm immediate, span still lags. */
+                    lzmesh_u37_g6_store(big, small, src, size,
+                                        k2e.pm, hb);
+                    k2e.pmok = 0;
+                }
+                if (!lzmesh_k2_append(&k2q, &k2e)) {
+                    lzmesh_k2_free(&k2q);
+                    return 0;
+                }
+            } else {
+                /* K2: gapped own catch-up appends (FIFO); NEW m
+                 * stays immediate (I4). */
+                if (!chal_win && !pre_stored && !cis_rep)
+                    lzmesh_u37_g6_store(big, small, src, size, m,
+                                        hb);
+                {
+                    lzmesh_i4_pend k2e;
+                    k2e.plo = span_lo;
+                    k2e.phi = end;
+                    k2e.pm = 0u;
+                    k2e.wlo = ins;
+                    k2e.wm = m;
+                    k2e.pok = 1;
+                    k2e.pmok = 0;
+                    k2e.wok = 1;
+                    if (!chal_win && !pre_stored && cis_rep) {
+                        k2e.pm = m;
+                        k2e.pmok = 1;
+                    }
+                    if (t2_big && k2e.pmok) {
+                        /* T2 SPAN40: pm immediate, span still lags. */
+                        lzmesh_u37_g6_store(big, small, src, size,
+                                            k2e.pm, hb);
+                        k2e.pmok = 0;
+                    }
+                    if (!lzmesh_k2_append(&k2q, &k2e)) {
+                        lzmesh_k2_free(&k2q);
+                        return 0;
+                    }
+                }
+            }
+            ins = end;
+        }
+        litrun = 0u;
+        globrun = 0u; /* F1 */
+        pos += clen;
+    }
+    /* I4: flush trailing pending catch-up (table completeness).
+     * K2: drains the FIFO (guarded). */
+    if (k2q.n != 0u)
+        lzmesh_k2_drain(NULL, NULL, big, small, vis, src, size, hb,
+                        &k2q);
+    litrun += (uint32_t)(size - pos);
+    globrun += (uint32_t)(size - pos); /* F1 */
+    if (globrun > 0u) {
+        if (ntok >= tokcap || ntok + 1u > size) {
+            lzmesh_k2_free(&k2q);
+            return 0;
+        }
+        toks[ntok].litrun = globrun;
+        toks[ntok].mlen = 2u; /* overhang-clamped terminator match */
+        toks[ntok].dist = recent[0];
+        toks[ntok].is_new = 0u;
+        toks[ntok].slot = 0u;
+        ntok++;
+    }
+    if (ntok == 0u || ntok > size) {
+        lzmesh_k2_free(&k2q);
+        return 0;
+    }
+    lzmesh_k2_free(&k2q);
     return ntok;
 }
 
@@ -19073,8 +19652,12 @@ static size_t lzmesh_u37_build(const uint8_t *src, size_t size,
         if (hb == 0u || hb > 21u || big == NULL || small == NULL)
             goto out;
     }
-    ntok = lzmesh_u37_parse(src, size, head, prev, big, small, hb, toks,
-                            size, vis, level, NULL, 0u);
+    /* T5E5-A: L5 runs the tight loop; other levels keep stock. */
+    ntok = (level == 5)
+        ? lzmesh_u37_parse_L5(src, size, big, small, hb, toks,
+                              size, vis, NULL, 0u)
+        : lzmesh_u37_parse(src, size, head, prev, big, small, hb, toks,
+                           size, vis, level, NULL, 0u);
     if (ntok == 0u || ntok > size)
         goto out;
     {
@@ -19255,7 +19838,12 @@ static size_t lzmesh_u37_build(const uint8_t *src, size_t size,
                             use_fresh = 1;
                         }
                     }
-                    nn = lzmesh_u37_parse(src, size, head, prev, big,
+                    /* T5E5-A: L5 runs the tight loop (cuts carried). */
+                    nn = (level == 5)
+                        ? lzmesh_u37_parse_L5(src, size, big, small, hb,
+                                              toks, size, vis, cuts,
+                                              h3n - 1u)
+                        : lzmesh_u37_parse(src, size, head, prev, big,
                                           small, hb, toks, size, vis,
                                           level,
                                           (level == 1
