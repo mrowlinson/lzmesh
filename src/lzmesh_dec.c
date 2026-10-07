@@ -7,6 +7,21 @@
  */
 #include "lzmesh.h"
 
+#ifdef T9D5_D_COUNT
+#include <stdio.h>
+static unsigned long t9d5_d_groups = 0;
+static unsigned long t9d5_d_singles = 0;
+static unsigned long t9d5_d_mprove = 0;
+static unsigned long t9d5_d_mfail = 0;
+__attribute__((destructor)) static void t9d5_d_dump(void) {
+    fprintf(stderr, "T9D5-D groups=%lu singles=%lu mprove=%lu mfail=%lu\n",
+            t9d5_d_groups, t9d5_d_singles, t9d5_d_mprove, t9d5_d_mfail);
+}
+#define T9D5_COUNT(x) (t9d5_d_ ## x)++
+#else
+#define T9D5_COUNT(x) ((void)0)
+#endif
+
 /* P3-N2: NEON match-copy fast path switch. arm_neon.h intrinsics only
  * (no asm). LZMESH_SCALAR (compile -DLZMESH_SCALAR=1 or make
  * LZMESH_SCALAR=1) forces scalar; off-__ARM_NEON defaults scalar
@@ -2771,10 +2786,16 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
         uint32_t r3 = recent[3];
         size_t bitpos[8];
         int bq;
+        int blk_null = (int)0;
+        int margin_ok = (int)0;
+        uint32_t mleft = (uint32_t)0;
+        int mdead = (int)0;
         for (bq = 0; bq < 8; bq++) {
             bitpos[bq] = lanes->l[bq].bitpos;
+            if (lane_p[bq] == NULL) { blk_null = (int)1; }
         }
-        for (ti = 0; ti < ss[0].n; ti++) {
+        /* T9D5-TRUE3 (W=8 K=16 M=72 R=1 G=mask, re-derived wchkdec/lit/dist-pos/ml/c13/copy). */
+        for (ti = 0; ti < ss[0].n; ) {
             uint8_t t;
             uint32_t lit_f;
             uint32_t sel;
@@ -2786,224 +2807,1540 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
             uint32_t ml_esc = (uint32_t)0;
             size_t take;
             int lok;
-            /* R10-TEXTDEC: wblk>=ds fuses the top ==ds check with the
-             * old wblk>ds check below (both pre-write pure FAILs;
-             * lit-escape len_used effects are locals, dead on FAIL). */
-            if (wblk >= (size_t)ds) {
-                return LZ_U3_FAIL;
+            int grouped = (int)0;
+            if (mdead == (int)0 &&
+                blk_null == (int)0 &&
+                ti + (uint32_t)8 <= ss[0].n &&
+                dist_used + (uint32_t)8 <= dist_n &&
+                (lz_u3_mc_ld64(tok_p + ti) & (uint64_t)0x2020202020202020) == (uint64_t)0x2020202020202020) {
+                /* margin guard: 8 lanes hold M=72 bytes => next K=16 groups window-safe. */
+                if ((margin_ok == (int)0 || mleft == (uint32_t)0) && mdead == (int)0) {
+                    margin_ok = (int)0;
+                    mleft = (uint32_t)0;
+                    T9D5_COUNT(mprove);
+                    if (((bitpos[0] >> 3) + (size_t)72 <= lane_cby[0]) &&
+                        ((bitpos[1] >> 3) + (size_t)72 <= lane_cby[1]) &&
+                        ((bitpos[2] >> 3) + (size_t)72 <= lane_cby[2]) &&
+                        ((bitpos[3] >> 3) + (size_t)72 <= lane_cby[3]) &&
+                        ((bitpos[4] >> 3) + (size_t)72 <= lane_cby[4]) &&
+                        ((bitpos[5] >> 3) + (size_t)72 <= lane_cby[5]) &&
+                        ((bitpos[6] >> 3) + (size_t)72 <= lane_cby[6]) &&
+                        ((bitpos[7] >> 3) + (size_t)72 <= lane_cby[7])) {
+                        margin_ok = (int)1;
+                        mleft = (uint32_t)16;
+                    } else {
+                        mdead = (int)1;
+                        T9D5_COUNT(mfail);
+                    }
+                }
+                if (margin_ok != (int)0 && mleft != (uint32_t)0) {
+                    T9D5_COUNT(groups);
+                    size_t sk0 = bitpos[(dist_used + (uint32_t)0) & (uint32_t)7];
+                    size_t sk1 = bitpos[(dist_used + (uint32_t)1) & (uint32_t)7];
+                    size_t sk2 = bitpos[(dist_used + (uint32_t)2) & (uint32_t)7];
+                    size_t sk3 = bitpos[(dist_used + (uint32_t)3) & (uint32_t)7];
+                    size_t sk4 = bitpos[(dist_used + (uint32_t)4) & (uint32_t)7];
+                    size_t sk5 = bitpos[(dist_used + (uint32_t)5) & (uint32_t)7];
+                    size_t sk6 = bitpos[(dist_used + (uint32_t)6) & (uint32_t)7];
+                    size_t sk7 = bitpos[(dist_used + (uint32_t)7) & (uint32_t)7];
+                    { /* slot 0 */
+                        /* R10-TEXTDEC: wblk>=ds fuses the top ==ds check with the
+                         * old wblk>ds check below (both pre-write pure FAILs;
+                         * lit-escape len_used effects are locals, dead on FAIL). */
+                        if (wblk >= (size_t)ds) {
+                            return LZ_U3_FAIL;
+                        }
+                        t = tok_p[ti + (uint32_t)0];
+                        lit_f = ((uint32_t)t >> 6) & (uint32_t)3;
+                        sel = ((uint32_t)t >> 3) & (uint32_t)7;
+                        len_f = (uint32_t)t & (uint32_t)7;
+
+                        /* (1) lit-len (short inline, escape calls out; same as generic).
+                         * R23-TL9D-P4: lit_f==0 (82% text-L9) skips the lit block:
+                         * run==0 => take==0, and both bounds checks are vacuous
+                         * under the lit_used<=lit_n invariant (base: 1 gated by
+                         * first_lit_ok+ss_byte / 0; step: take<=lit_n-lit_used
+                         * checked every non-skip iter) + lit_n<=lit_bound (tok_n>=1
+                         * by loop bound). lit_used/wblk += 0 no-ops. Same bytes,
+                         * same FAILs (skip fires only when checks provably pass). */
+                        if (lit_f == (uint32_t)0) {
+                            run = (uint32_t)0;
+                            take = (size_t)0;
+                        } else {
+                            if (lit_f != (uint32_t)3) {
+                                run = lit_f;
+                                lok = LZ_U3_OK;
+                            } else {
+                                lok = lz_u3_lit_run(lit_f, &ss[1], &len_used, &run);
+                            }
+                            if (lz_u2_c16_ok(lok) != LZ_U2_OK) {
+                                return LZ_U3_FAIL;
+                            }
+                            /* (2) lit-copy (same bounds as generic; room checks dead:
+                             * wblk<ds<room here, take<=ds-wblk<room-wblk after clamp).
+                             * R10-TEXTDEC: wblk>ds fused into the top >=ds check; lit_n
+                             * single check (lit_used<=lit_n invariant: first-block
+                             * lit_used=1 gated by first_lit_ok+ss_byte, else 0; take
+                             * clamped every iter, so no size_t wrap). */
+                            if ((size_t)lit_used + (size_t)run > lit_bound) {
+                                return LZ_U3_FAIL;
+                            }
+                            take = (size_t)run;
+                            if (take > (size_t)ds - wblk) {
+                                take = (size_t)ds - wblk;
+                            }
+                            if (take > (size_t)lit_n - (size_t)lit_used) {
+                                return LZ_U3_FAIL;
+                            }
+                            if (take <= (size_t)3) {
+                                if (take != (size_t)0) {
+                                    dst[w_tot + wblk] = lit_p[lit_used];
+                                    if (take > (size_t)1) {
+                                        dst[w_tot + wblk + (size_t)1] =
+                                            lit_p[lit_used + (uint32_t)1];
+                                        if (take > (size_t)2) {
+                                            dst[w_tot + wblk + (size_t)2] =
+                                                lit_p[lit_used + (uint32_t)2];
+                                        }
+                                    }
+                                }
+                            } else {
+                                memcpy(dst + w_tot + wblk, lit_p + lit_used, take);
+                            }
+                        } /* P4 else (lit_f != 0) */
+                        lit_used += (uint32_t)take;
+                        wblk += take;
+                        /* positional new-dist (sel>=4 proven, rep dead). */
+                        {
+                            uint8_t jdsym = dist_p[dist_used + (uint32_t)0];
+                            uint32_t jsb = (uint32_t)jdsym >> 3;
+                            uint32_t jslow3 = (uint32_t)jdsym & (uint32_t)7;
+                            uint32_t jsuffix = (uint32_t)0;
+                            if (jsb != (uint32_t)0) {
+                                uint32_t jlk = (dist_used + (uint32_t)0) & (uint32_t)7;
+                                size_t jsbyte = sk0 >> 3;
+                                uint32_t jssh = (uint32_t)(sk0 & (size_t)7);
+                                uint64_t jw64 = lz_u3_mc_ld64(lane_p[jlk] + jsbyte);
+                                jsuffix = (uint32_t)(jw64 >> jssh) & (((uint32_t)1 << jsb) - (uint32_t)1);
+                                sk0 += (size_t)jsb;
+                            }
+                            d = lz_u3_dist(jsb, jslow3, jsuffix);
+                        }
+                            ml_short = (((sel - (uint32_t)4) << 3) | len_f) & (uint32_t)31;
+                            ml_esc = (uint32_t)31;
+                            r3 = d;
+                        /* (4) C13 single unsigned compare: (d-1)>=w is exact
+                         * (w<=dst_capacity<=0x7FFFFFFF by the entry gate; d==0
+                         * wraps to UINT32_MAX which always fails; w==0 fails
+                         * both forms on every d). */
+                        if ((uint32_t)(d - (uint32_t)1) >= (uint32_t)(w_tot + wblk)) {
+                            return LZ_U3_FAIL;
+                        }
+                        /* (5) match-len (short inline, escape calls out; sel split
+                         * hoisted into the dist legs above). */
+                        if (ml_short != ml_esc) {
+                            mlen = ml_short + (uint32_t)2;
+                            lok = LZ_U3_OK;
+                        } else {
+                            lok = lz_u3_match_len(sel, len_f, &ss[1], &len_used, &mlen);
+                        }
+                        if (lz_u2_c16_ok(lok) != LZ_U2_OK) {
+                            return LZ_U3_FAIL;
+                        }
+                        /* (6) match-copy (same clamp; room checks dead: wblk<=ds<room,
+                         * take<=ds-wblk<room-wblk).
+                         * R10-TEXTDEC: inline take<=16 on the d>=take leg (66.1%
+                         * take<=8, 33.8% take 9-16 on text-L9; memcpy kept past
+                         * 16, match_copy past d<take). d>=take ranges are disjoint
+                         * (src end w-d+take<=w=dst start, c13 d>=1); overlapping
+                         * wide stores rewrite identical bytes, so every form is
+                         * byte-exact with no overrun (R-014); take==0 skips (the
+                         * old match_copy(0) leg is a proven no-op). */
+                        take = (size_t)mlen;
+                        if (take > (size_t)ds - wblk) {
+                            take = (size_t)ds - wblk;
+                        }
+                        if ((size_t)d >= take) {
+                            size_t moff = w_tot + wblk;
+                            if (take <= (size_t)8) {
+                                if (take <= (size_t)3) {
+                                    if (take != (size_t)0) {
+                                        dst[moff] = dst[moff - (size_t)d];
+                                        if (take > (size_t)1) {
+                                            dst[moff + (size_t)1] =
+                                                dst[moff + (size_t)1 - (size_t)d];
+                                            if (take > (size_t)2) {
+                                                dst[moff + (size_t)2] =
+                                                    dst[moff + (size_t)2 - (size_t)d];
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    uint32_t mlo =
+                                        lz_u3_mc_ld32(dst + moff - (size_t)d);
+                                    uint32_t mhi =
+                                        lz_u3_mc_ld32(dst + moff - (size_t)d + take -
+                                                      (size_t)4);
+                                    lz_u3_mc_st32(dst + moff, mlo);
+                                    lz_u3_mc_st32(dst + moff + take - (size_t)4, mhi);
+                                }
+                            } else if (take <= (size_t)16) {
+                                uint64_t mlo = lz_u3_mc_ld64(dst + moff - (size_t)d);
+                                uint64_t mhi =
+                                    lz_u3_mc_ld64(dst + moff - (size_t)d + take -
+                                                  (size_t)8);
+                                lz_u3_mc_st64(dst + moff, mlo);
+                                lz_u3_mc_st64(dst + moff + take - (size_t)8, mhi);
+                            } else {
+                                memcpy(dst + moff, dst + moff - (size_t)d, take);
+                            }
+                        } else {
+                            lz_u3_match_copy(dst, w_tot + wblk, d, take);
+                        }
+                        wblk += take;
+                    }
+                    { /* slot 1 */
+                        /* R10-TEXTDEC: wblk>=ds fuses the top ==ds check with the
+                         * old wblk>ds check below (both pre-write pure FAILs;
+                         * lit-escape len_used effects are locals, dead on FAIL). */
+                        if (wblk >= (size_t)ds) {
+                            return LZ_U3_FAIL;
+                        }
+                        t = tok_p[ti + (uint32_t)1];
+                        lit_f = ((uint32_t)t >> 6) & (uint32_t)3;
+                        sel = ((uint32_t)t >> 3) & (uint32_t)7;
+                        len_f = (uint32_t)t & (uint32_t)7;
+
+                        /* (1) lit-len (short inline, escape calls out; same as generic).
+                         * R23-TL9D-P4: lit_f==0 (82% text-L9) skips the lit block:
+                         * run==0 => take==0, and both bounds checks are vacuous
+                         * under the lit_used<=lit_n invariant (base: 1 gated by
+                         * first_lit_ok+ss_byte / 0; step: take<=lit_n-lit_used
+                         * checked every non-skip iter) + lit_n<=lit_bound (tok_n>=1
+                         * by loop bound). lit_used/wblk += 0 no-ops. Same bytes,
+                         * same FAILs (skip fires only when checks provably pass). */
+                        if (lit_f == (uint32_t)0) {
+                            run = (uint32_t)0;
+                            take = (size_t)0;
+                        } else {
+                            if (lit_f != (uint32_t)3) {
+                                run = lit_f;
+                                lok = LZ_U3_OK;
+                            } else {
+                                lok = lz_u3_lit_run(lit_f, &ss[1], &len_used, &run);
+                            }
+                            if (lz_u2_c16_ok(lok) != LZ_U2_OK) {
+                                return LZ_U3_FAIL;
+                            }
+                            /* (2) lit-copy (same bounds as generic; room checks dead:
+                             * wblk<ds<room here, take<=ds-wblk<room-wblk after clamp).
+                             * R10-TEXTDEC: wblk>ds fused into the top >=ds check; lit_n
+                             * single check (lit_used<=lit_n invariant: first-block
+                             * lit_used=1 gated by first_lit_ok+ss_byte, else 0; take
+                             * clamped every iter, so no size_t wrap). */
+                            if ((size_t)lit_used + (size_t)run > lit_bound) {
+                                return LZ_U3_FAIL;
+                            }
+                            take = (size_t)run;
+                            if (take > (size_t)ds - wblk) {
+                                take = (size_t)ds - wblk;
+                            }
+                            if (take > (size_t)lit_n - (size_t)lit_used) {
+                                return LZ_U3_FAIL;
+                            }
+                            if (take <= (size_t)3) {
+                                if (take != (size_t)0) {
+                                    dst[w_tot + wblk] = lit_p[lit_used];
+                                    if (take > (size_t)1) {
+                                        dst[w_tot + wblk + (size_t)1] =
+                                            lit_p[lit_used + (uint32_t)1];
+                                        if (take > (size_t)2) {
+                                            dst[w_tot + wblk + (size_t)2] =
+                                                lit_p[lit_used + (uint32_t)2];
+                                        }
+                                    }
+                                }
+                            } else {
+                                memcpy(dst + w_tot + wblk, lit_p + lit_used, take);
+                            }
+                        } /* P4 else (lit_f != 0) */
+                        lit_used += (uint32_t)take;
+                        wblk += take;
+                        /* positional new-dist (sel>=4 proven, rep dead). */
+                        {
+                            uint8_t jdsym = dist_p[dist_used + (uint32_t)1];
+                            uint32_t jsb = (uint32_t)jdsym >> 3;
+                            uint32_t jslow3 = (uint32_t)jdsym & (uint32_t)7;
+                            uint32_t jsuffix = (uint32_t)0;
+                            if (jsb != (uint32_t)0) {
+                                uint32_t jlk = (dist_used + (uint32_t)1) & (uint32_t)7;
+                                size_t jsbyte = sk1 >> 3;
+                                uint32_t jssh = (uint32_t)(sk1 & (size_t)7);
+                                uint64_t jw64 = lz_u3_mc_ld64(lane_p[jlk] + jsbyte);
+                                jsuffix = (uint32_t)(jw64 >> jssh) & (((uint32_t)1 << jsb) - (uint32_t)1);
+                                sk1 += (size_t)jsb;
+                            }
+                            d = lz_u3_dist(jsb, jslow3, jsuffix);
+                        }
+                            ml_short = (((sel - (uint32_t)4) << 3) | len_f) & (uint32_t)31;
+                            ml_esc = (uint32_t)31;
+                            r2 = d;
+                        /* (4) C13 single unsigned compare: (d-1)>=w is exact
+                         * (w<=dst_capacity<=0x7FFFFFFF by the entry gate; d==0
+                         * wraps to UINT32_MAX which always fails; w==0 fails
+                         * both forms on every d). */
+                        if ((uint32_t)(d - (uint32_t)1) >= (uint32_t)(w_tot + wblk)) {
+                            return LZ_U3_FAIL;
+                        }
+                        /* (5) match-len (short inline, escape calls out; sel split
+                         * hoisted into the dist legs above). */
+                        if (ml_short != ml_esc) {
+                            mlen = ml_short + (uint32_t)2;
+                            lok = LZ_U3_OK;
+                        } else {
+                            lok = lz_u3_match_len(sel, len_f, &ss[1], &len_used, &mlen);
+                        }
+                        if (lz_u2_c16_ok(lok) != LZ_U2_OK) {
+                            return LZ_U3_FAIL;
+                        }
+                        /* (6) match-copy (same clamp; room checks dead: wblk<=ds<room,
+                         * take<=ds-wblk<room-wblk).
+                         * R10-TEXTDEC: inline take<=16 on the d>=take leg (66.1%
+                         * take<=8, 33.8% take 9-16 on text-L9; memcpy kept past
+                         * 16, match_copy past d<take). d>=take ranges are disjoint
+                         * (src end w-d+take<=w=dst start, c13 d>=1); overlapping
+                         * wide stores rewrite identical bytes, so every form is
+                         * byte-exact with no overrun (R-014); take==0 skips (the
+                         * old match_copy(0) leg is a proven no-op). */
+                        take = (size_t)mlen;
+                        if (take > (size_t)ds - wblk) {
+                            take = (size_t)ds - wblk;
+                        }
+                        if ((size_t)d >= take) {
+                            size_t moff = w_tot + wblk;
+                            if (take <= (size_t)8) {
+                                if (take <= (size_t)3) {
+                                    if (take != (size_t)0) {
+                                        dst[moff] = dst[moff - (size_t)d];
+                                        if (take > (size_t)1) {
+                                            dst[moff + (size_t)1] =
+                                                dst[moff + (size_t)1 - (size_t)d];
+                                            if (take > (size_t)2) {
+                                                dst[moff + (size_t)2] =
+                                                    dst[moff + (size_t)2 - (size_t)d];
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    uint32_t mlo =
+                                        lz_u3_mc_ld32(dst + moff - (size_t)d);
+                                    uint32_t mhi =
+                                        lz_u3_mc_ld32(dst + moff - (size_t)d + take -
+                                                      (size_t)4);
+                                    lz_u3_mc_st32(dst + moff, mlo);
+                                    lz_u3_mc_st32(dst + moff + take - (size_t)4, mhi);
+                                }
+                            } else if (take <= (size_t)16) {
+                                uint64_t mlo = lz_u3_mc_ld64(dst + moff - (size_t)d);
+                                uint64_t mhi =
+                                    lz_u3_mc_ld64(dst + moff - (size_t)d + take -
+                                                  (size_t)8);
+                                lz_u3_mc_st64(dst + moff, mlo);
+                                lz_u3_mc_st64(dst + moff + take - (size_t)8, mhi);
+                            } else {
+                                memcpy(dst + moff, dst + moff - (size_t)d, take);
+                            }
+                        } else {
+                            lz_u3_match_copy(dst, w_tot + wblk, d, take);
+                        }
+                        wblk += take;
+                    }
+                    { /* slot 2 */
+                        /* R10-TEXTDEC: wblk>=ds fuses the top ==ds check with the
+                         * old wblk>ds check below (both pre-write pure FAILs;
+                         * lit-escape len_used effects are locals, dead on FAIL). */
+                        if (wblk >= (size_t)ds) {
+                            return LZ_U3_FAIL;
+                        }
+                        t = tok_p[ti + (uint32_t)2];
+                        lit_f = ((uint32_t)t >> 6) & (uint32_t)3;
+                        sel = ((uint32_t)t >> 3) & (uint32_t)7;
+                        len_f = (uint32_t)t & (uint32_t)7;
+
+                        /* (1) lit-len (short inline, escape calls out; same as generic).
+                         * R23-TL9D-P4: lit_f==0 (82% text-L9) skips the lit block:
+                         * run==0 => take==0, and both bounds checks are vacuous
+                         * under the lit_used<=lit_n invariant (base: 1 gated by
+                         * first_lit_ok+ss_byte / 0; step: take<=lit_n-lit_used
+                         * checked every non-skip iter) + lit_n<=lit_bound (tok_n>=1
+                         * by loop bound). lit_used/wblk += 0 no-ops. Same bytes,
+                         * same FAILs (skip fires only when checks provably pass). */
+                        if (lit_f == (uint32_t)0) {
+                            run = (uint32_t)0;
+                            take = (size_t)0;
+                        } else {
+                            if (lit_f != (uint32_t)3) {
+                                run = lit_f;
+                                lok = LZ_U3_OK;
+                            } else {
+                                lok = lz_u3_lit_run(lit_f, &ss[1], &len_used, &run);
+                            }
+                            if (lz_u2_c16_ok(lok) != LZ_U2_OK) {
+                                return LZ_U3_FAIL;
+                            }
+                            /* (2) lit-copy (same bounds as generic; room checks dead:
+                             * wblk<ds<room here, take<=ds-wblk<room-wblk after clamp).
+                             * R10-TEXTDEC: wblk>ds fused into the top >=ds check; lit_n
+                             * single check (lit_used<=lit_n invariant: first-block
+                             * lit_used=1 gated by first_lit_ok+ss_byte, else 0; take
+                             * clamped every iter, so no size_t wrap). */
+                            if ((size_t)lit_used + (size_t)run > lit_bound) {
+                                return LZ_U3_FAIL;
+                            }
+                            take = (size_t)run;
+                            if (take > (size_t)ds - wblk) {
+                                take = (size_t)ds - wblk;
+                            }
+                            if (take > (size_t)lit_n - (size_t)lit_used) {
+                                return LZ_U3_FAIL;
+                            }
+                            if (take <= (size_t)3) {
+                                if (take != (size_t)0) {
+                                    dst[w_tot + wblk] = lit_p[lit_used];
+                                    if (take > (size_t)1) {
+                                        dst[w_tot + wblk + (size_t)1] =
+                                            lit_p[lit_used + (uint32_t)1];
+                                        if (take > (size_t)2) {
+                                            dst[w_tot + wblk + (size_t)2] =
+                                                lit_p[lit_used + (uint32_t)2];
+                                        }
+                                    }
+                                }
+                            } else {
+                                memcpy(dst + w_tot + wblk, lit_p + lit_used, take);
+                            }
+                        } /* P4 else (lit_f != 0) */
+                        lit_used += (uint32_t)take;
+                        wblk += take;
+                        /* positional new-dist (sel>=4 proven, rep dead). */
+                        {
+                            uint8_t jdsym = dist_p[dist_used + (uint32_t)2];
+                            uint32_t jsb = (uint32_t)jdsym >> 3;
+                            uint32_t jslow3 = (uint32_t)jdsym & (uint32_t)7;
+                            uint32_t jsuffix = (uint32_t)0;
+                            if (jsb != (uint32_t)0) {
+                                uint32_t jlk = (dist_used + (uint32_t)2) & (uint32_t)7;
+                                size_t jsbyte = sk2 >> 3;
+                                uint32_t jssh = (uint32_t)(sk2 & (size_t)7);
+                                uint64_t jw64 = lz_u3_mc_ld64(lane_p[jlk] + jsbyte);
+                                jsuffix = (uint32_t)(jw64 >> jssh) & (((uint32_t)1 << jsb) - (uint32_t)1);
+                                sk2 += (size_t)jsb;
+                            }
+                            d = lz_u3_dist(jsb, jslow3, jsuffix);
+                        }
+                            ml_short = (((sel - (uint32_t)4) << 3) | len_f) & (uint32_t)31;
+                            ml_esc = (uint32_t)31;
+                            r1 = d;
+                        /* (4) C13 single unsigned compare: (d-1)>=w is exact
+                         * (w<=dst_capacity<=0x7FFFFFFF by the entry gate; d==0
+                         * wraps to UINT32_MAX which always fails; w==0 fails
+                         * both forms on every d). */
+                        if ((uint32_t)(d - (uint32_t)1) >= (uint32_t)(w_tot + wblk)) {
+                            return LZ_U3_FAIL;
+                        }
+                        /* (5) match-len (short inline, escape calls out; sel split
+                         * hoisted into the dist legs above). */
+                        if (ml_short != ml_esc) {
+                            mlen = ml_short + (uint32_t)2;
+                            lok = LZ_U3_OK;
+                        } else {
+                            lok = lz_u3_match_len(sel, len_f, &ss[1], &len_used, &mlen);
+                        }
+                        if (lz_u2_c16_ok(lok) != LZ_U2_OK) {
+                            return LZ_U3_FAIL;
+                        }
+                        /* (6) match-copy (same clamp; room checks dead: wblk<=ds<room,
+                         * take<=ds-wblk<room-wblk).
+                         * R10-TEXTDEC: inline take<=16 on the d>=take leg (66.1%
+                         * take<=8, 33.8% take 9-16 on text-L9; memcpy kept past
+                         * 16, match_copy past d<take). d>=take ranges are disjoint
+                         * (src end w-d+take<=w=dst start, c13 d>=1); overlapping
+                         * wide stores rewrite identical bytes, so every form is
+                         * byte-exact with no overrun (R-014); take==0 skips (the
+                         * old match_copy(0) leg is a proven no-op). */
+                        take = (size_t)mlen;
+                        if (take > (size_t)ds - wblk) {
+                            take = (size_t)ds - wblk;
+                        }
+                        if ((size_t)d >= take) {
+                            size_t moff = w_tot + wblk;
+                            if (take <= (size_t)8) {
+                                if (take <= (size_t)3) {
+                                    if (take != (size_t)0) {
+                                        dst[moff] = dst[moff - (size_t)d];
+                                        if (take > (size_t)1) {
+                                            dst[moff + (size_t)1] =
+                                                dst[moff + (size_t)1 - (size_t)d];
+                                            if (take > (size_t)2) {
+                                                dst[moff + (size_t)2] =
+                                                    dst[moff + (size_t)2 - (size_t)d];
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    uint32_t mlo =
+                                        lz_u3_mc_ld32(dst + moff - (size_t)d);
+                                    uint32_t mhi =
+                                        lz_u3_mc_ld32(dst + moff - (size_t)d + take -
+                                                      (size_t)4);
+                                    lz_u3_mc_st32(dst + moff, mlo);
+                                    lz_u3_mc_st32(dst + moff + take - (size_t)4, mhi);
+                                }
+                            } else if (take <= (size_t)16) {
+                                uint64_t mlo = lz_u3_mc_ld64(dst + moff - (size_t)d);
+                                uint64_t mhi =
+                                    lz_u3_mc_ld64(dst + moff - (size_t)d + take -
+                                                  (size_t)8);
+                                lz_u3_mc_st64(dst + moff, mlo);
+                                lz_u3_mc_st64(dst + moff + take - (size_t)8, mhi);
+                            } else {
+                                memcpy(dst + moff, dst + moff - (size_t)d, take);
+                            }
+                        } else {
+                            lz_u3_match_copy(dst, w_tot + wblk, d, take);
+                        }
+                        wblk += take;
+                    }
+                    { /* slot 3 */
+                        /* R10-TEXTDEC: wblk>=ds fuses the top ==ds check with the
+                         * old wblk>ds check below (both pre-write pure FAILs;
+                         * lit-escape len_used effects are locals, dead on FAIL). */
+                        if (wblk >= (size_t)ds) {
+                            return LZ_U3_FAIL;
+                        }
+                        t = tok_p[ti + (uint32_t)3];
+                        lit_f = ((uint32_t)t >> 6) & (uint32_t)3;
+                        sel = ((uint32_t)t >> 3) & (uint32_t)7;
+                        len_f = (uint32_t)t & (uint32_t)7;
+
+                        /* (1) lit-len (short inline, escape calls out; same as generic).
+                         * R23-TL9D-P4: lit_f==0 (82% text-L9) skips the lit block:
+                         * run==0 => take==0, and both bounds checks are vacuous
+                         * under the lit_used<=lit_n invariant (base: 1 gated by
+                         * first_lit_ok+ss_byte / 0; step: take<=lit_n-lit_used
+                         * checked every non-skip iter) + lit_n<=lit_bound (tok_n>=1
+                         * by loop bound). lit_used/wblk += 0 no-ops. Same bytes,
+                         * same FAILs (skip fires only when checks provably pass). */
+                        if (lit_f == (uint32_t)0) {
+                            run = (uint32_t)0;
+                            take = (size_t)0;
+                        } else {
+                            if (lit_f != (uint32_t)3) {
+                                run = lit_f;
+                                lok = LZ_U3_OK;
+                            } else {
+                                lok = lz_u3_lit_run(lit_f, &ss[1], &len_used, &run);
+                            }
+                            if (lz_u2_c16_ok(lok) != LZ_U2_OK) {
+                                return LZ_U3_FAIL;
+                            }
+                            /* (2) lit-copy (same bounds as generic; room checks dead:
+                             * wblk<ds<room here, take<=ds-wblk<room-wblk after clamp).
+                             * R10-TEXTDEC: wblk>ds fused into the top >=ds check; lit_n
+                             * single check (lit_used<=lit_n invariant: first-block
+                             * lit_used=1 gated by first_lit_ok+ss_byte, else 0; take
+                             * clamped every iter, so no size_t wrap). */
+                            if ((size_t)lit_used + (size_t)run > lit_bound) {
+                                return LZ_U3_FAIL;
+                            }
+                            take = (size_t)run;
+                            if (take > (size_t)ds - wblk) {
+                                take = (size_t)ds - wblk;
+                            }
+                            if (take > (size_t)lit_n - (size_t)lit_used) {
+                                return LZ_U3_FAIL;
+                            }
+                            if (take <= (size_t)3) {
+                                if (take != (size_t)0) {
+                                    dst[w_tot + wblk] = lit_p[lit_used];
+                                    if (take > (size_t)1) {
+                                        dst[w_tot + wblk + (size_t)1] =
+                                            lit_p[lit_used + (uint32_t)1];
+                                        if (take > (size_t)2) {
+                                            dst[w_tot + wblk + (size_t)2] =
+                                                lit_p[lit_used + (uint32_t)2];
+                                        }
+                                    }
+                                }
+                            } else {
+                                memcpy(dst + w_tot + wblk, lit_p + lit_used, take);
+                            }
+                        } /* P4 else (lit_f != 0) */
+                        lit_used += (uint32_t)take;
+                        wblk += take;
+                        /* positional new-dist (sel>=4 proven, rep dead). */
+                        {
+                            uint8_t jdsym = dist_p[dist_used + (uint32_t)3];
+                            uint32_t jsb = (uint32_t)jdsym >> 3;
+                            uint32_t jslow3 = (uint32_t)jdsym & (uint32_t)7;
+                            uint32_t jsuffix = (uint32_t)0;
+                            if (jsb != (uint32_t)0) {
+                                uint32_t jlk = (dist_used + (uint32_t)3) & (uint32_t)7;
+                                size_t jsbyte = sk3 >> 3;
+                                uint32_t jssh = (uint32_t)(sk3 & (size_t)7);
+                                uint64_t jw64 = lz_u3_mc_ld64(lane_p[jlk] + jsbyte);
+                                jsuffix = (uint32_t)(jw64 >> jssh) & (((uint32_t)1 << jsb) - (uint32_t)1);
+                                sk3 += (size_t)jsb;
+                            }
+                            d = lz_u3_dist(jsb, jslow3, jsuffix);
+                        }
+                            ml_short = (((sel - (uint32_t)4) << 3) | len_f) & (uint32_t)31;
+                            ml_esc = (uint32_t)31;
+                            r0 = d;
+                        /* (4) C13 single unsigned compare: (d-1)>=w is exact
+                         * (w<=dst_capacity<=0x7FFFFFFF by the entry gate; d==0
+                         * wraps to UINT32_MAX which always fails; w==0 fails
+                         * both forms on every d). */
+                        if ((uint32_t)(d - (uint32_t)1) >= (uint32_t)(w_tot + wblk)) {
+                            return LZ_U3_FAIL;
+                        }
+                        /* (5) match-len (short inline, escape calls out; sel split
+                         * hoisted into the dist legs above). */
+                        if (ml_short != ml_esc) {
+                            mlen = ml_short + (uint32_t)2;
+                            lok = LZ_U3_OK;
+                        } else {
+                            lok = lz_u3_match_len(sel, len_f, &ss[1], &len_used, &mlen);
+                        }
+                        if (lz_u2_c16_ok(lok) != LZ_U2_OK) {
+                            return LZ_U3_FAIL;
+                        }
+                        /* (6) match-copy (same clamp; room checks dead: wblk<=ds<room,
+                         * take<=ds-wblk<room-wblk).
+                         * R10-TEXTDEC: inline take<=16 on the d>=take leg (66.1%
+                         * take<=8, 33.8% take 9-16 on text-L9; memcpy kept past
+                         * 16, match_copy past d<take). d>=take ranges are disjoint
+                         * (src end w-d+take<=w=dst start, c13 d>=1); overlapping
+                         * wide stores rewrite identical bytes, so every form is
+                         * byte-exact with no overrun (R-014); take==0 skips (the
+                         * old match_copy(0) leg is a proven no-op). */
+                        take = (size_t)mlen;
+                        if (take > (size_t)ds - wblk) {
+                            take = (size_t)ds - wblk;
+                        }
+                        if ((size_t)d >= take) {
+                            size_t moff = w_tot + wblk;
+                            if (take <= (size_t)8) {
+                                if (take <= (size_t)3) {
+                                    if (take != (size_t)0) {
+                                        dst[moff] = dst[moff - (size_t)d];
+                                        if (take > (size_t)1) {
+                                            dst[moff + (size_t)1] =
+                                                dst[moff + (size_t)1 - (size_t)d];
+                                            if (take > (size_t)2) {
+                                                dst[moff + (size_t)2] =
+                                                    dst[moff + (size_t)2 - (size_t)d];
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    uint32_t mlo =
+                                        lz_u3_mc_ld32(dst + moff - (size_t)d);
+                                    uint32_t mhi =
+                                        lz_u3_mc_ld32(dst + moff - (size_t)d + take -
+                                                      (size_t)4);
+                                    lz_u3_mc_st32(dst + moff, mlo);
+                                    lz_u3_mc_st32(dst + moff + take - (size_t)4, mhi);
+                                }
+                            } else if (take <= (size_t)16) {
+                                uint64_t mlo = lz_u3_mc_ld64(dst + moff - (size_t)d);
+                                uint64_t mhi =
+                                    lz_u3_mc_ld64(dst + moff - (size_t)d + take -
+                                                  (size_t)8);
+                                lz_u3_mc_st64(dst + moff, mlo);
+                                lz_u3_mc_st64(dst + moff + take - (size_t)8, mhi);
+                            } else {
+                                memcpy(dst + moff, dst + moff - (size_t)d, take);
+                            }
+                        } else {
+                            lz_u3_match_copy(dst, w_tot + wblk, d, take);
+                        }
+                        wblk += take;
+                    }
+                    { /* slot 4 */
+                        /* R10-TEXTDEC: wblk>=ds fuses the top ==ds check with the
+                         * old wblk>ds check below (both pre-write pure FAILs;
+                         * lit-escape len_used effects are locals, dead on FAIL). */
+                        if (wblk >= (size_t)ds) {
+                            return LZ_U3_FAIL;
+                        }
+                        t = tok_p[ti + (uint32_t)4];
+                        lit_f = ((uint32_t)t >> 6) & (uint32_t)3;
+                        sel = ((uint32_t)t >> 3) & (uint32_t)7;
+                        len_f = (uint32_t)t & (uint32_t)7;
+
+                        /* (1) lit-len (short inline, escape calls out; same as generic).
+                         * R23-TL9D-P4: lit_f==0 (82% text-L9) skips the lit block:
+                         * run==0 => take==0, and both bounds checks are vacuous
+                         * under the lit_used<=lit_n invariant (base: 1 gated by
+                         * first_lit_ok+ss_byte / 0; step: take<=lit_n-lit_used
+                         * checked every non-skip iter) + lit_n<=lit_bound (tok_n>=1
+                         * by loop bound). lit_used/wblk += 0 no-ops. Same bytes,
+                         * same FAILs (skip fires only when checks provably pass). */
+                        if (lit_f == (uint32_t)0) {
+                            run = (uint32_t)0;
+                            take = (size_t)0;
+                        } else {
+                            if (lit_f != (uint32_t)3) {
+                                run = lit_f;
+                                lok = LZ_U3_OK;
+                            } else {
+                                lok = lz_u3_lit_run(lit_f, &ss[1], &len_used, &run);
+                            }
+                            if (lz_u2_c16_ok(lok) != LZ_U2_OK) {
+                                return LZ_U3_FAIL;
+                            }
+                            /* (2) lit-copy (same bounds as generic; room checks dead:
+                             * wblk<ds<room here, take<=ds-wblk<room-wblk after clamp).
+                             * R10-TEXTDEC: wblk>ds fused into the top >=ds check; lit_n
+                             * single check (lit_used<=lit_n invariant: first-block
+                             * lit_used=1 gated by first_lit_ok+ss_byte, else 0; take
+                             * clamped every iter, so no size_t wrap). */
+                            if ((size_t)lit_used + (size_t)run > lit_bound) {
+                                return LZ_U3_FAIL;
+                            }
+                            take = (size_t)run;
+                            if (take > (size_t)ds - wblk) {
+                                take = (size_t)ds - wblk;
+                            }
+                            if (take > (size_t)lit_n - (size_t)lit_used) {
+                                return LZ_U3_FAIL;
+                            }
+                            if (take <= (size_t)3) {
+                                if (take != (size_t)0) {
+                                    dst[w_tot + wblk] = lit_p[lit_used];
+                                    if (take > (size_t)1) {
+                                        dst[w_tot + wblk + (size_t)1] =
+                                            lit_p[lit_used + (uint32_t)1];
+                                        if (take > (size_t)2) {
+                                            dst[w_tot + wblk + (size_t)2] =
+                                                lit_p[lit_used + (uint32_t)2];
+                                        }
+                                    }
+                                }
+                            } else {
+                                memcpy(dst + w_tot + wblk, lit_p + lit_used, take);
+                            }
+                        } /* P4 else (lit_f != 0) */
+                        lit_used += (uint32_t)take;
+                        wblk += take;
+                        /* positional new-dist (sel>=4 proven, rep dead). */
+                        {
+                            uint8_t jdsym = dist_p[dist_used + (uint32_t)4];
+                            uint32_t jsb = (uint32_t)jdsym >> 3;
+                            uint32_t jslow3 = (uint32_t)jdsym & (uint32_t)7;
+                            uint32_t jsuffix = (uint32_t)0;
+                            if (jsb != (uint32_t)0) {
+                                uint32_t jlk = (dist_used + (uint32_t)4) & (uint32_t)7;
+                                size_t jsbyte = sk4 >> 3;
+                                uint32_t jssh = (uint32_t)(sk4 & (size_t)7);
+                                uint64_t jw64 = lz_u3_mc_ld64(lane_p[jlk] + jsbyte);
+                                jsuffix = (uint32_t)(jw64 >> jssh) & (((uint32_t)1 << jsb) - (uint32_t)1);
+                                sk4 += (size_t)jsb;
+                            }
+                            d = lz_u3_dist(jsb, jslow3, jsuffix);
+                        }
+                            ml_short = (((sel - (uint32_t)4) << 3) | len_f) & (uint32_t)31;
+                            ml_esc = (uint32_t)31;
+                            r3 = d;
+                        /* (4) C13 single unsigned compare: (d-1)>=w is exact
+                         * (w<=dst_capacity<=0x7FFFFFFF by the entry gate; d==0
+                         * wraps to UINT32_MAX which always fails; w==0 fails
+                         * both forms on every d). */
+                        if ((uint32_t)(d - (uint32_t)1) >= (uint32_t)(w_tot + wblk)) {
+                            return LZ_U3_FAIL;
+                        }
+                        /* (5) match-len (short inline, escape calls out; sel split
+                         * hoisted into the dist legs above). */
+                        if (ml_short != ml_esc) {
+                            mlen = ml_short + (uint32_t)2;
+                            lok = LZ_U3_OK;
+                        } else {
+                            lok = lz_u3_match_len(sel, len_f, &ss[1], &len_used, &mlen);
+                        }
+                        if (lz_u2_c16_ok(lok) != LZ_U2_OK) {
+                            return LZ_U3_FAIL;
+                        }
+                        /* (6) match-copy (same clamp; room checks dead: wblk<=ds<room,
+                         * take<=ds-wblk<room-wblk).
+                         * R10-TEXTDEC: inline take<=16 on the d>=take leg (66.1%
+                         * take<=8, 33.8% take 9-16 on text-L9; memcpy kept past
+                         * 16, match_copy past d<take). d>=take ranges are disjoint
+                         * (src end w-d+take<=w=dst start, c13 d>=1); overlapping
+                         * wide stores rewrite identical bytes, so every form is
+                         * byte-exact with no overrun (R-014); take==0 skips (the
+                         * old match_copy(0) leg is a proven no-op). */
+                        take = (size_t)mlen;
+                        if (take > (size_t)ds - wblk) {
+                            take = (size_t)ds - wblk;
+                        }
+                        if ((size_t)d >= take) {
+                            size_t moff = w_tot + wblk;
+                            if (take <= (size_t)8) {
+                                if (take <= (size_t)3) {
+                                    if (take != (size_t)0) {
+                                        dst[moff] = dst[moff - (size_t)d];
+                                        if (take > (size_t)1) {
+                                            dst[moff + (size_t)1] =
+                                                dst[moff + (size_t)1 - (size_t)d];
+                                            if (take > (size_t)2) {
+                                                dst[moff + (size_t)2] =
+                                                    dst[moff + (size_t)2 - (size_t)d];
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    uint32_t mlo =
+                                        lz_u3_mc_ld32(dst + moff - (size_t)d);
+                                    uint32_t mhi =
+                                        lz_u3_mc_ld32(dst + moff - (size_t)d + take -
+                                                      (size_t)4);
+                                    lz_u3_mc_st32(dst + moff, mlo);
+                                    lz_u3_mc_st32(dst + moff + take - (size_t)4, mhi);
+                                }
+                            } else if (take <= (size_t)16) {
+                                uint64_t mlo = lz_u3_mc_ld64(dst + moff - (size_t)d);
+                                uint64_t mhi =
+                                    lz_u3_mc_ld64(dst + moff - (size_t)d + take -
+                                                  (size_t)8);
+                                lz_u3_mc_st64(dst + moff, mlo);
+                                lz_u3_mc_st64(dst + moff + take - (size_t)8, mhi);
+                            } else {
+                                memcpy(dst + moff, dst + moff - (size_t)d, take);
+                            }
+                        } else {
+                            lz_u3_match_copy(dst, w_tot + wblk, d, take);
+                        }
+                        wblk += take;
+                    }
+                    { /* slot 5 */
+                        /* R10-TEXTDEC: wblk>=ds fuses the top ==ds check with the
+                         * old wblk>ds check below (both pre-write pure FAILs;
+                         * lit-escape len_used effects are locals, dead on FAIL). */
+                        if (wblk >= (size_t)ds) {
+                            return LZ_U3_FAIL;
+                        }
+                        t = tok_p[ti + (uint32_t)5];
+                        lit_f = ((uint32_t)t >> 6) & (uint32_t)3;
+                        sel = ((uint32_t)t >> 3) & (uint32_t)7;
+                        len_f = (uint32_t)t & (uint32_t)7;
+
+                        /* (1) lit-len (short inline, escape calls out; same as generic).
+                         * R23-TL9D-P4: lit_f==0 (82% text-L9) skips the lit block:
+                         * run==0 => take==0, and both bounds checks are vacuous
+                         * under the lit_used<=lit_n invariant (base: 1 gated by
+                         * first_lit_ok+ss_byte / 0; step: take<=lit_n-lit_used
+                         * checked every non-skip iter) + lit_n<=lit_bound (tok_n>=1
+                         * by loop bound). lit_used/wblk += 0 no-ops. Same bytes,
+                         * same FAILs (skip fires only when checks provably pass). */
+                        if (lit_f == (uint32_t)0) {
+                            run = (uint32_t)0;
+                            take = (size_t)0;
+                        } else {
+                            if (lit_f != (uint32_t)3) {
+                                run = lit_f;
+                                lok = LZ_U3_OK;
+                            } else {
+                                lok = lz_u3_lit_run(lit_f, &ss[1], &len_used, &run);
+                            }
+                            if (lz_u2_c16_ok(lok) != LZ_U2_OK) {
+                                return LZ_U3_FAIL;
+                            }
+                            /* (2) lit-copy (same bounds as generic; room checks dead:
+                             * wblk<ds<room here, take<=ds-wblk<room-wblk after clamp).
+                             * R10-TEXTDEC: wblk>ds fused into the top >=ds check; lit_n
+                             * single check (lit_used<=lit_n invariant: first-block
+                             * lit_used=1 gated by first_lit_ok+ss_byte, else 0; take
+                             * clamped every iter, so no size_t wrap). */
+                            if ((size_t)lit_used + (size_t)run > lit_bound) {
+                                return LZ_U3_FAIL;
+                            }
+                            take = (size_t)run;
+                            if (take > (size_t)ds - wblk) {
+                                take = (size_t)ds - wblk;
+                            }
+                            if (take > (size_t)lit_n - (size_t)lit_used) {
+                                return LZ_U3_FAIL;
+                            }
+                            if (take <= (size_t)3) {
+                                if (take != (size_t)0) {
+                                    dst[w_tot + wblk] = lit_p[lit_used];
+                                    if (take > (size_t)1) {
+                                        dst[w_tot + wblk + (size_t)1] =
+                                            lit_p[lit_used + (uint32_t)1];
+                                        if (take > (size_t)2) {
+                                            dst[w_tot + wblk + (size_t)2] =
+                                                lit_p[lit_used + (uint32_t)2];
+                                        }
+                                    }
+                                }
+                            } else {
+                                memcpy(dst + w_tot + wblk, lit_p + lit_used, take);
+                            }
+                        } /* P4 else (lit_f != 0) */
+                        lit_used += (uint32_t)take;
+                        wblk += take;
+                        /* positional new-dist (sel>=4 proven, rep dead). */
+                        {
+                            uint8_t jdsym = dist_p[dist_used + (uint32_t)5];
+                            uint32_t jsb = (uint32_t)jdsym >> 3;
+                            uint32_t jslow3 = (uint32_t)jdsym & (uint32_t)7;
+                            uint32_t jsuffix = (uint32_t)0;
+                            if (jsb != (uint32_t)0) {
+                                uint32_t jlk = (dist_used + (uint32_t)5) & (uint32_t)7;
+                                size_t jsbyte = sk5 >> 3;
+                                uint32_t jssh = (uint32_t)(sk5 & (size_t)7);
+                                uint64_t jw64 = lz_u3_mc_ld64(lane_p[jlk] + jsbyte);
+                                jsuffix = (uint32_t)(jw64 >> jssh) & (((uint32_t)1 << jsb) - (uint32_t)1);
+                                sk5 += (size_t)jsb;
+                            }
+                            d = lz_u3_dist(jsb, jslow3, jsuffix);
+                        }
+                            ml_short = (((sel - (uint32_t)4) << 3) | len_f) & (uint32_t)31;
+                            ml_esc = (uint32_t)31;
+                            r2 = d;
+                        /* (4) C13 single unsigned compare: (d-1)>=w is exact
+                         * (w<=dst_capacity<=0x7FFFFFFF by the entry gate; d==0
+                         * wraps to UINT32_MAX which always fails; w==0 fails
+                         * both forms on every d). */
+                        if ((uint32_t)(d - (uint32_t)1) >= (uint32_t)(w_tot + wblk)) {
+                            return LZ_U3_FAIL;
+                        }
+                        /* (5) match-len (short inline, escape calls out; sel split
+                         * hoisted into the dist legs above). */
+                        if (ml_short != ml_esc) {
+                            mlen = ml_short + (uint32_t)2;
+                            lok = LZ_U3_OK;
+                        } else {
+                            lok = lz_u3_match_len(sel, len_f, &ss[1], &len_used, &mlen);
+                        }
+                        if (lz_u2_c16_ok(lok) != LZ_U2_OK) {
+                            return LZ_U3_FAIL;
+                        }
+                        /* (6) match-copy (same clamp; room checks dead: wblk<=ds<room,
+                         * take<=ds-wblk<room-wblk).
+                         * R10-TEXTDEC: inline take<=16 on the d>=take leg (66.1%
+                         * take<=8, 33.8% take 9-16 on text-L9; memcpy kept past
+                         * 16, match_copy past d<take). d>=take ranges are disjoint
+                         * (src end w-d+take<=w=dst start, c13 d>=1); overlapping
+                         * wide stores rewrite identical bytes, so every form is
+                         * byte-exact with no overrun (R-014); take==0 skips (the
+                         * old match_copy(0) leg is a proven no-op). */
+                        take = (size_t)mlen;
+                        if (take > (size_t)ds - wblk) {
+                            take = (size_t)ds - wblk;
+                        }
+                        if ((size_t)d >= take) {
+                            size_t moff = w_tot + wblk;
+                            if (take <= (size_t)8) {
+                                if (take <= (size_t)3) {
+                                    if (take != (size_t)0) {
+                                        dst[moff] = dst[moff - (size_t)d];
+                                        if (take > (size_t)1) {
+                                            dst[moff + (size_t)1] =
+                                                dst[moff + (size_t)1 - (size_t)d];
+                                            if (take > (size_t)2) {
+                                                dst[moff + (size_t)2] =
+                                                    dst[moff + (size_t)2 - (size_t)d];
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    uint32_t mlo =
+                                        lz_u3_mc_ld32(dst + moff - (size_t)d);
+                                    uint32_t mhi =
+                                        lz_u3_mc_ld32(dst + moff - (size_t)d + take -
+                                                      (size_t)4);
+                                    lz_u3_mc_st32(dst + moff, mlo);
+                                    lz_u3_mc_st32(dst + moff + take - (size_t)4, mhi);
+                                }
+                            } else if (take <= (size_t)16) {
+                                uint64_t mlo = lz_u3_mc_ld64(dst + moff - (size_t)d);
+                                uint64_t mhi =
+                                    lz_u3_mc_ld64(dst + moff - (size_t)d + take -
+                                                  (size_t)8);
+                                lz_u3_mc_st64(dst + moff, mlo);
+                                lz_u3_mc_st64(dst + moff + take - (size_t)8, mhi);
+                            } else {
+                                memcpy(dst + moff, dst + moff - (size_t)d, take);
+                            }
+                        } else {
+                            lz_u3_match_copy(dst, w_tot + wblk, d, take);
+                        }
+                        wblk += take;
+                    }
+                    { /* slot 6 */
+                        /* R10-TEXTDEC: wblk>=ds fuses the top ==ds check with the
+                         * old wblk>ds check below (both pre-write pure FAILs;
+                         * lit-escape len_used effects are locals, dead on FAIL). */
+                        if (wblk >= (size_t)ds) {
+                            return LZ_U3_FAIL;
+                        }
+                        t = tok_p[ti + (uint32_t)6];
+                        lit_f = ((uint32_t)t >> 6) & (uint32_t)3;
+                        sel = ((uint32_t)t >> 3) & (uint32_t)7;
+                        len_f = (uint32_t)t & (uint32_t)7;
+
+                        /* (1) lit-len (short inline, escape calls out; same as generic).
+                         * R23-TL9D-P4: lit_f==0 (82% text-L9) skips the lit block:
+                         * run==0 => take==0, and both bounds checks are vacuous
+                         * under the lit_used<=lit_n invariant (base: 1 gated by
+                         * first_lit_ok+ss_byte / 0; step: take<=lit_n-lit_used
+                         * checked every non-skip iter) + lit_n<=lit_bound (tok_n>=1
+                         * by loop bound). lit_used/wblk += 0 no-ops. Same bytes,
+                         * same FAILs (skip fires only when checks provably pass). */
+                        if (lit_f == (uint32_t)0) {
+                            run = (uint32_t)0;
+                            take = (size_t)0;
+                        } else {
+                            if (lit_f != (uint32_t)3) {
+                                run = lit_f;
+                                lok = LZ_U3_OK;
+                            } else {
+                                lok = lz_u3_lit_run(lit_f, &ss[1], &len_used, &run);
+                            }
+                            if (lz_u2_c16_ok(lok) != LZ_U2_OK) {
+                                return LZ_U3_FAIL;
+                            }
+                            /* (2) lit-copy (same bounds as generic; room checks dead:
+                             * wblk<ds<room here, take<=ds-wblk<room-wblk after clamp).
+                             * R10-TEXTDEC: wblk>ds fused into the top >=ds check; lit_n
+                             * single check (lit_used<=lit_n invariant: first-block
+                             * lit_used=1 gated by first_lit_ok+ss_byte, else 0; take
+                             * clamped every iter, so no size_t wrap). */
+                            if ((size_t)lit_used + (size_t)run > lit_bound) {
+                                return LZ_U3_FAIL;
+                            }
+                            take = (size_t)run;
+                            if (take > (size_t)ds - wblk) {
+                                take = (size_t)ds - wblk;
+                            }
+                            if (take > (size_t)lit_n - (size_t)lit_used) {
+                                return LZ_U3_FAIL;
+                            }
+                            if (take <= (size_t)3) {
+                                if (take != (size_t)0) {
+                                    dst[w_tot + wblk] = lit_p[lit_used];
+                                    if (take > (size_t)1) {
+                                        dst[w_tot + wblk + (size_t)1] =
+                                            lit_p[lit_used + (uint32_t)1];
+                                        if (take > (size_t)2) {
+                                            dst[w_tot + wblk + (size_t)2] =
+                                                lit_p[lit_used + (uint32_t)2];
+                                        }
+                                    }
+                                }
+                            } else {
+                                memcpy(dst + w_tot + wblk, lit_p + lit_used, take);
+                            }
+                        } /* P4 else (lit_f != 0) */
+                        lit_used += (uint32_t)take;
+                        wblk += take;
+                        /* positional new-dist (sel>=4 proven, rep dead). */
+                        {
+                            uint8_t jdsym = dist_p[dist_used + (uint32_t)6];
+                            uint32_t jsb = (uint32_t)jdsym >> 3;
+                            uint32_t jslow3 = (uint32_t)jdsym & (uint32_t)7;
+                            uint32_t jsuffix = (uint32_t)0;
+                            if (jsb != (uint32_t)0) {
+                                uint32_t jlk = (dist_used + (uint32_t)6) & (uint32_t)7;
+                                size_t jsbyte = sk6 >> 3;
+                                uint32_t jssh = (uint32_t)(sk6 & (size_t)7);
+                                uint64_t jw64 = lz_u3_mc_ld64(lane_p[jlk] + jsbyte);
+                                jsuffix = (uint32_t)(jw64 >> jssh) & (((uint32_t)1 << jsb) - (uint32_t)1);
+                                sk6 += (size_t)jsb;
+                            }
+                            d = lz_u3_dist(jsb, jslow3, jsuffix);
+                        }
+                            ml_short = (((sel - (uint32_t)4) << 3) | len_f) & (uint32_t)31;
+                            ml_esc = (uint32_t)31;
+                            r1 = d;
+                        /* (4) C13 single unsigned compare: (d-1)>=w is exact
+                         * (w<=dst_capacity<=0x7FFFFFFF by the entry gate; d==0
+                         * wraps to UINT32_MAX which always fails; w==0 fails
+                         * both forms on every d). */
+                        if ((uint32_t)(d - (uint32_t)1) >= (uint32_t)(w_tot + wblk)) {
+                            return LZ_U3_FAIL;
+                        }
+                        /* (5) match-len (short inline, escape calls out; sel split
+                         * hoisted into the dist legs above). */
+                        if (ml_short != ml_esc) {
+                            mlen = ml_short + (uint32_t)2;
+                            lok = LZ_U3_OK;
+                        } else {
+                            lok = lz_u3_match_len(sel, len_f, &ss[1], &len_used, &mlen);
+                        }
+                        if (lz_u2_c16_ok(lok) != LZ_U2_OK) {
+                            return LZ_U3_FAIL;
+                        }
+                        /* (6) match-copy (same clamp; room checks dead: wblk<=ds<room,
+                         * take<=ds-wblk<room-wblk).
+                         * R10-TEXTDEC: inline take<=16 on the d>=take leg (66.1%
+                         * take<=8, 33.8% take 9-16 on text-L9; memcpy kept past
+                         * 16, match_copy past d<take). d>=take ranges are disjoint
+                         * (src end w-d+take<=w=dst start, c13 d>=1); overlapping
+                         * wide stores rewrite identical bytes, so every form is
+                         * byte-exact with no overrun (R-014); take==0 skips (the
+                         * old match_copy(0) leg is a proven no-op). */
+                        take = (size_t)mlen;
+                        if (take > (size_t)ds - wblk) {
+                            take = (size_t)ds - wblk;
+                        }
+                        if ((size_t)d >= take) {
+                            size_t moff = w_tot + wblk;
+                            if (take <= (size_t)8) {
+                                if (take <= (size_t)3) {
+                                    if (take != (size_t)0) {
+                                        dst[moff] = dst[moff - (size_t)d];
+                                        if (take > (size_t)1) {
+                                            dst[moff + (size_t)1] =
+                                                dst[moff + (size_t)1 - (size_t)d];
+                                            if (take > (size_t)2) {
+                                                dst[moff + (size_t)2] =
+                                                    dst[moff + (size_t)2 - (size_t)d];
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    uint32_t mlo =
+                                        lz_u3_mc_ld32(dst + moff - (size_t)d);
+                                    uint32_t mhi =
+                                        lz_u3_mc_ld32(dst + moff - (size_t)d + take -
+                                                      (size_t)4);
+                                    lz_u3_mc_st32(dst + moff, mlo);
+                                    lz_u3_mc_st32(dst + moff + take - (size_t)4, mhi);
+                                }
+                            } else if (take <= (size_t)16) {
+                                uint64_t mlo = lz_u3_mc_ld64(dst + moff - (size_t)d);
+                                uint64_t mhi =
+                                    lz_u3_mc_ld64(dst + moff - (size_t)d + take -
+                                                  (size_t)8);
+                                lz_u3_mc_st64(dst + moff, mlo);
+                                lz_u3_mc_st64(dst + moff + take - (size_t)8, mhi);
+                            } else {
+                                memcpy(dst + moff, dst + moff - (size_t)d, take);
+                            }
+                        } else {
+                            lz_u3_match_copy(dst, w_tot + wblk, d, take);
+                        }
+                        wblk += take;
+                    }
+                    { /* slot 7 */
+                        /* R10-TEXTDEC: wblk>=ds fuses the top ==ds check with the
+                         * old wblk>ds check below (both pre-write pure FAILs;
+                         * lit-escape len_used effects are locals, dead on FAIL). */
+                        if (wblk >= (size_t)ds) {
+                            return LZ_U3_FAIL;
+                        }
+                        t = tok_p[ti + (uint32_t)7];
+                        lit_f = ((uint32_t)t >> 6) & (uint32_t)3;
+                        sel = ((uint32_t)t >> 3) & (uint32_t)7;
+                        len_f = (uint32_t)t & (uint32_t)7;
+
+                        /* (1) lit-len (short inline, escape calls out; same as generic).
+                         * R23-TL9D-P4: lit_f==0 (82% text-L9) skips the lit block:
+                         * run==0 => take==0, and both bounds checks are vacuous
+                         * under the lit_used<=lit_n invariant (base: 1 gated by
+                         * first_lit_ok+ss_byte / 0; step: take<=lit_n-lit_used
+                         * checked every non-skip iter) + lit_n<=lit_bound (tok_n>=1
+                         * by loop bound). lit_used/wblk += 0 no-ops. Same bytes,
+                         * same FAILs (skip fires only when checks provably pass). */
+                        if (lit_f == (uint32_t)0) {
+                            run = (uint32_t)0;
+                            take = (size_t)0;
+                        } else {
+                            if (lit_f != (uint32_t)3) {
+                                run = lit_f;
+                                lok = LZ_U3_OK;
+                            } else {
+                                lok = lz_u3_lit_run(lit_f, &ss[1], &len_used, &run);
+                            }
+                            if (lz_u2_c16_ok(lok) != LZ_U2_OK) {
+                                return LZ_U3_FAIL;
+                            }
+                            /* (2) lit-copy (same bounds as generic; room checks dead:
+                             * wblk<ds<room here, take<=ds-wblk<room-wblk after clamp).
+                             * R10-TEXTDEC: wblk>ds fused into the top >=ds check; lit_n
+                             * single check (lit_used<=lit_n invariant: first-block
+                             * lit_used=1 gated by first_lit_ok+ss_byte, else 0; take
+                             * clamped every iter, so no size_t wrap). */
+                            if ((size_t)lit_used + (size_t)run > lit_bound) {
+                                return LZ_U3_FAIL;
+                            }
+                            take = (size_t)run;
+                            if (take > (size_t)ds - wblk) {
+                                take = (size_t)ds - wblk;
+                            }
+                            if (take > (size_t)lit_n - (size_t)lit_used) {
+                                return LZ_U3_FAIL;
+                            }
+                            if (take <= (size_t)3) {
+                                if (take != (size_t)0) {
+                                    dst[w_tot + wblk] = lit_p[lit_used];
+                                    if (take > (size_t)1) {
+                                        dst[w_tot + wblk + (size_t)1] =
+                                            lit_p[lit_used + (uint32_t)1];
+                                        if (take > (size_t)2) {
+                                            dst[w_tot + wblk + (size_t)2] =
+                                                lit_p[lit_used + (uint32_t)2];
+                                        }
+                                    }
+                                }
+                            } else {
+                                memcpy(dst + w_tot + wblk, lit_p + lit_used, take);
+                            }
+                        } /* P4 else (lit_f != 0) */
+                        lit_used += (uint32_t)take;
+                        wblk += take;
+                        /* positional new-dist (sel>=4 proven, rep dead). */
+                        {
+                            uint8_t jdsym = dist_p[dist_used + (uint32_t)7];
+                            uint32_t jsb = (uint32_t)jdsym >> 3;
+                            uint32_t jslow3 = (uint32_t)jdsym & (uint32_t)7;
+                            uint32_t jsuffix = (uint32_t)0;
+                            if (jsb != (uint32_t)0) {
+                                uint32_t jlk = (dist_used + (uint32_t)7) & (uint32_t)7;
+                                size_t jsbyte = sk7 >> 3;
+                                uint32_t jssh = (uint32_t)(sk7 & (size_t)7);
+                                uint64_t jw64 = lz_u3_mc_ld64(lane_p[jlk] + jsbyte);
+                                jsuffix = (uint32_t)(jw64 >> jssh) & (((uint32_t)1 << jsb) - (uint32_t)1);
+                                sk7 += (size_t)jsb;
+                            }
+                            d = lz_u3_dist(jsb, jslow3, jsuffix);
+                        }
+                            ml_short = (((sel - (uint32_t)4) << 3) | len_f) & (uint32_t)31;
+                            ml_esc = (uint32_t)31;
+                            r0 = d;
+                        /* (4) C13 single unsigned compare: (d-1)>=w is exact
+                         * (w<=dst_capacity<=0x7FFFFFFF by the entry gate; d==0
+                         * wraps to UINT32_MAX which always fails; w==0 fails
+                         * both forms on every d). */
+                        if ((uint32_t)(d - (uint32_t)1) >= (uint32_t)(w_tot + wblk)) {
+                            return LZ_U3_FAIL;
+                        }
+                        /* (5) match-len (short inline, escape calls out; sel split
+                         * hoisted into the dist legs above). */
+                        if (ml_short != ml_esc) {
+                            mlen = ml_short + (uint32_t)2;
+                            lok = LZ_U3_OK;
+                        } else {
+                            lok = lz_u3_match_len(sel, len_f, &ss[1], &len_used, &mlen);
+                        }
+                        if (lz_u2_c16_ok(lok) != LZ_U2_OK) {
+                            return LZ_U3_FAIL;
+                        }
+                        /* (6) match-copy (same clamp; room checks dead: wblk<=ds<room,
+                         * take<=ds-wblk<room-wblk).
+                         * R10-TEXTDEC: inline take<=16 on the d>=take leg (66.1%
+                         * take<=8, 33.8% take 9-16 on text-L9; memcpy kept past
+                         * 16, match_copy past d<take). d>=take ranges are disjoint
+                         * (src end w-d+take<=w=dst start, c13 d>=1); overlapping
+                         * wide stores rewrite identical bytes, so every form is
+                         * byte-exact with no overrun (R-014); take==0 skips (the
+                         * old match_copy(0) leg is a proven no-op). */
+                        take = (size_t)mlen;
+                        if (take > (size_t)ds - wblk) {
+                            take = (size_t)ds - wblk;
+                        }
+                        if ((size_t)d >= take) {
+                            size_t moff = w_tot + wblk;
+                            if (take <= (size_t)8) {
+                                if (take <= (size_t)3) {
+                                    if (take != (size_t)0) {
+                                        dst[moff] = dst[moff - (size_t)d];
+                                        if (take > (size_t)1) {
+                                            dst[moff + (size_t)1] =
+                                                dst[moff + (size_t)1 - (size_t)d];
+                                            if (take > (size_t)2) {
+                                                dst[moff + (size_t)2] =
+                                                    dst[moff + (size_t)2 - (size_t)d];
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    uint32_t mlo =
+                                        lz_u3_mc_ld32(dst + moff - (size_t)d);
+                                    uint32_t mhi =
+                                        lz_u3_mc_ld32(dst + moff - (size_t)d + take -
+                                                      (size_t)4);
+                                    lz_u3_mc_st32(dst + moff, mlo);
+                                    lz_u3_mc_st32(dst + moff + take - (size_t)4, mhi);
+                                }
+                            } else if (take <= (size_t)16) {
+                                uint64_t mlo = lz_u3_mc_ld64(dst + moff - (size_t)d);
+                                uint64_t mhi =
+                                    lz_u3_mc_ld64(dst + moff - (size_t)d + take -
+                                                  (size_t)8);
+                                lz_u3_mc_st64(dst + moff, mlo);
+                                lz_u3_mc_st64(dst + moff + take - (size_t)8, mhi);
+                            } else {
+                                memcpy(dst + moff, dst + moff - (size_t)d, take);
+                            }
+                        } else {
+                            lz_u3_match_copy(dst, w_tot + wblk, d, take);
+                        }
+                        wblk += take;
+                    }
+                    bitpos[(dist_used + (uint32_t)0) & (uint32_t)7] = sk0;
+                    bitpos[(dist_used + (uint32_t)1) & (uint32_t)7] = sk1;
+                    bitpos[(dist_used + (uint32_t)2) & (uint32_t)7] = sk2;
+                    bitpos[(dist_used + (uint32_t)3) & (uint32_t)7] = sk3;
+                    bitpos[(dist_used + (uint32_t)4) & (uint32_t)7] = sk4;
+                    bitpos[(dist_used + (uint32_t)5) & (uint32_t)7] = sk5;
+                    bitpos[(dist_used + (uint32_t)6) & (uint32_t)7] = sk6;
+                    bitpos[(dist_used + (uint32_t)7) & (uint32_t)7] = sk7;
+                    dist_used += (uint32_t)8;
+                    ti += (uint32_t)8;
+                    mleft -= (uint32_t)1;
+                    grouped = (int)1;
+                }
             }
-            t = tok_p[ti];
-            lit_f = ((uint32_t)t >> 6) & (uint32_t)3;
-            sel = ((uint32_t)t >> 3) & (uint32_t)7;
-            len_f = (uint32_t)t & (uint32_t)7;
-            /* (1) lit-len (short inline, escape calls out; same as generic).
-             * R23-TL9D-P4: lit_f==0 (82% text-L9) skips the lit block:
-             * run==0 => take==0, and both bounds checks are vacuous
-             * under the lit_used<=lit_n invariant (base: 1 gated by
-             * first_lit_ok+ss_byte / 0; step: take<=lit_n-lit_used
-             * checked every non-skip iter) + lit_n<=lit_bound (tok_n>=1
-             * by loop bound). lit_used/wblk += 0 no-ops. Same bytes,
-             * same FAILs (skip fires only when checks provably pass). */
-            if (lit_f == (uint32_t)0) {
-                run = (uint32_t)0;
-                take = (size_t)0;
-            } else {
-                if (lit_f != (uint32_t)3) {
-                    run = lit_f;
-                    lok = LZ_U3_OK;
+            if (grouped == 0) {
+                T9D5_COUNT(singles);
+                uint8_t t;
+                uint32_t lit_f;
+                uint32_t sel;
+                uint32_t len_f;
+                uint32_t run = (uint32_t)0;
+                uint32_t mlen = (uint32_t)0;
+                uint32_t d = (uint32_t)0;
+                uint32_t ml_short = (uint32_t)0;
+                uint32_t ml_esc = (uint32_t)0;
+                size_t take;
+                int lok;
+                /* R10-TEXTDEC: wblk>=ds fuses the top ==ds check with the
+                 * old wblk>ds check below (both pre-write pure FAILs;
+                 * lit-escape len_used effects are locals, dead on FAIL). */
+                if (wblk >= (size_t)ds) {
+                    return LZ_U3_FAIL;
+                }
+                t = tok_p[ti];
+                lit_f = ((uint32_t)t >> 6) & (uint32_t)3;
+                sel = ((uint32_t)t >> 3) & (uint32_t)7;
+                len_f = (uint32_t)t & (uint32_t)7;
+                /* (1) lit-len (short inline, escape calls out; same as generic).
+                 * R23-TL9D-P4: lit_f==0 (82% text-L9) skips the lit block:
+                 * run==0 => take==0, and both bounds checks are vacuous
+                 * under the lit_used<=lit_n invariant (base: 1 gated by
+                 * first_lit_ok+ss_byte / 0; step: take<=lit_n-lit_used
+                 * checked every non-skip iter) + lit_n<=lit_bound (tok_n>=1
+                 * by loop bound). lit_used/wblk += 0 no-ops. Same bytes,
+                 * same FAILs (skip fires only when checks provably pass). */
+                if (lit_f == (uint32_t)0) {
+                    run = (uint32_t)0;
+                    take = (size_t)0;
                 } else {
-                    lok = lz_u3_lit_run(lit_f, &ss[1], &len_used, &run);
-                }
-                if (lz_u2_c16_ok(lok) != LZ_U2_OK) {
-                    return LZ_U3_FAIL;
-                }
-                /* (2) lit-copy (same bounds as generic; room checks dead:
-                 * wblk<ds<room here, take<=ds-wblk<room-wblk after clamp).
-                 * R10-TEXTDEC: wblk>ds fused into the top >=ds check; lit_n
-                 * single check (lit_used<=lit_n invariant: first-block
-                 * lit_used=1 gated by first_lit_ok+ss_byte, else 0; take
-                 * clamped every iter, so no size_t wrap). */
-                if ((size_t)lit_used + (size_t)run > lit_bound) {
-                    return LZ_U3_FAIL;
-                }
-                take = (size_t)run;
-                if (take > (size_t)ds - wblk) {
-                    take = (size_t)ds - wblk;
-                }
-                if (take > (size_t)lit_n - (size_t)lit_used) {
-                    return LZ_U3_FAIL;
-                }
-                if (take <= (size_t)3) {
-                    if (take != (size_t)0) {
-                        dst[w_tot + wblk] = lit_p[lit_used];
-                        if (take > (size_t)1) {
-                            dst[w_tot + wblk + (size_t)1] =
-                                lit_p[lit_used + (uint32_t)1];
-                            if (take > (size_t)2) {
-                                dst[w_tot + wblk + (size_t)2] =
-                                    lit_p[lit_used + (uint32_t)2];
+                    if (lit_f != (uint32_t)3) {
+                        run = lit_f;
+                        lok = LZ_U3_OK;
+                    } else {
+                        lok = lz_u3_lit_run(lit_f, &ss[1], &len_used, &run);
+                    }
+                    if (lz_u2_c16_ok(lok) != LZ_U2_OK) {
+                        return LZ_U3_FAIL;
+                    }
+                    /* (2) lit-copy (same bounds as generic; room checks dead:
+                     * wblk<ds<room here, take<=ds-wblk<room-wblk after clamp).
+                     * R10-TEXTDEC: wblk>ds fused into the top >=ds check; lit_n
+                     * single check (lit_used<=lit_n invariant: first-block
+                     * lit_used=1 gated by first_lit_ok+ss_byte, else 0; take
+                     * clamped every iter, so no size_t wrap). */
+                    if ((size_t)lit_used + (size_t)run > lit_bound) {
+                        return LZ_U3_FAIL;
+                    }
+                    take = (size_t)run;
+                    if (take > (size_t)ds - wblk) {
+                        take = (size_t)ds - wblk;
+                    }
+                    if (take > (size_t)lit_n - (size_t)lit_used) {
+                        return LZ_U3_FAIL;
+                    }
+                    if (take <= (size_t)3) {
+                        if (take != (size_t)0) {
+                            dst[w_tot + wblk] = lit_p[lit_used];
+                            if (take > (size_t)1) {
+                                dst[w_tot + wblk + (size_t)1] =
+                                    lit_p[lit_used + (uint32_t)1];
+                                if (take > (size_t)2) {
+                                    dst[w_tot + wblk + (size_t)2] =
+                                        lit_p[lit_used + (uint32_t)2];
+                                }
                             }
                         }
+                    } else {
+                        memcpy(dst + w_tot + wblk, lit_p + lit_used, take);
                     }
+                } /* P4 else (lit_f != 0) */
+                lit_used += (uint32_t)take;
+                wblk += take;
+                /* (3) dist-resolve (ptr-direct; lanes!=NULL by guard).
+                 * R10-TEXTDEC: rep leg selects+shuffles scalar recents and
+                 * sets match-len short/esc inline (dedups the two sel<=3
+                 * branches below; recents writes dead on later FAILs). */
+                if (sel <= (uint32_t)3) {
+                    if (sel == (uint32_t)0) {
+                        d = r0;
+                    } else if (sel == (uint32_t)1) {
+                        d = r1;
+                        r1 = r0;
+                        r0 = d;
+                    } else if (sel == (uint32_t)2) {
+                        d = r2;
+                        r2 = r1;
+                        r1 = r0;
+                        r0 = d;
+                    } else {
+                        d = r3;
+                        r3 = r2;
+                        r2 = r1;
+                        r1 = r0;
+                        r0 = d;
+                    }
+                    ml_short = len_f;
+                    ml_esc = (uint32_t)7;
                 } else {
-                    memcpy(dst + w_tot + wblk, lit_p + lit_used, take);
-                }
-            } /* P4 else (lit_f != 0) */
-            lit_used += (uint32_t)take;
-            wblk += take;
-            /* (3) dist-resolve (ptr-direct; lanes!=NULL by guard).
-             * R10-TEXTDEC: rep leg selects+shuffles scalar recents and
-             * sets match-len short/esc inline (dedups the two sel<=3
-             * branches below; recents writes dead on later FAILs). */
-            if (sel <= (uint32_t)3) {
-                if (sel == (uint32_t)0) {
-                    d = r0;
-                } else if (sel == (uint32_t)1) {
-                    d = r1;
-                    r1 = r0;
-                    r0 = d;
-                } else if (sel == (uint32_t)2) {
-                    d = r2;
-                    r2 = r1;
-                    r1 = r0;
-                    r0 = d;
-                } else {
-                    d = r3;
+                    uint8_t dsym;
+                    uint32_t didx;
+                    uint32_t sb;
+                    uint32_t slow3;
+                    uint32_t suffix = (uint32_t)0;
+                    if (dist_used >= dist_n) {
+                        return LZ_U3_FAIL;
+                    }
+                    dsym = dist_p[dist_used];
+                    didx = dist_used;
+                    dist_used += (uint32_t)1;
+                    sb = (uint32_t)dsym >> 3;
+                    slow3 = (uint32_t)dsym & (uint32_t)7;
+                    if (sb != (uint32_t)0) {
+                        uint32_t lk;
+                        size_t spos;
+                        size_t sbyte;
+                        uint32_t ssh;
+                        lk = didx & (uint32_t)7;
+                        if (lane_p[lk] == NULL) {
+                            return LZ_U3_FAIL;
+                        }
+                        /* R10-TEXTDEC: local bitpos (never written back);
+                         * window check first: sb<=31 makes sbyte+8<=cby
+                         * imply spos+sb<=cbits, so the bounds check runs
+                         * only when the window misses (same FAILs, dst
+                         * unwritten before either; bitpos<=cbits+31 by
+                         * checked-advance induction, so no size_t wrap). */
+                        spos = bitpos[lk];
+                        sbyte = spos >> 3;
+                        ssh = (uint32_t)(spos & (size_t)7);
+                        if (sbyte + (size_t)8 <= lane_cby[lk]) {
+                            uint64_t w64 = lz_u3_mc_ld64(lane_p[lk] + sbyte);
+                            suffix = (uint32_t)(w64 >> ssh) &
+                                (((uint32_t)1 << sb) - (uint32_t)1);
+                            bitpos[lk] = spos + (size_t)sb;
+                        } else if (spos + (size_t)sb > lane_cbits[lk]) {
+                            return LZ_U3_FAIL;
+                        } else {
+                            lanes->l[lk].bitpos = bitpos[lk];
+                            if (lz_u3_suffix_bits(&lanes->l[lk], sb,
+                                                  &suffix) != LZ_U3_OK) {
+                                return LZ_U3_FAIL;
+                            }
+                            bitpos[lk] = lanes->l[lk].bitpos;
+                        }
+                    }
+                    d = lz_u3_dist(sb, slow3, suffix);
+                    /* R10-TEXTDEC: new-leg match-len short/esc + scalar
+                     * push inline (dedups the sel<=3 branches below). */
+                    ml_short = (((sel - (uint32_t)4) << 3) | len_f) & (uint32_t)31;
+                    ml_esc = (uint32_t)31;
                     r3 = r2;
                     r2 = r1;
                     r1 = r0;
                     r0 = d;
                 }
-                ml_short = len_f;
-                ml_esc = (uint32_t)7;
-            } else {
-                uint8_t dsym;
-                uint32_t didx;
-                uint32_t sb;
-                uint32_t slow3;
-                uint32_t suffix = (uint32_t)0;
-                if (dist_used >= dist_n) {
+                /* (4) C13 single unsigned compare: (d-1)>=w is exact
+                 * (w<=dst_capacity<=0x7FFFFFFF by the entry gate; d==0
+                 * wraps to UINT32_MAX which always fails; w==0 fails
+                 * both forms on every d). */
+                if ((uint32_t)(d - (uint32_t)1) >= (uint32_t)(w_tot + wblk)) {
                     return LZ_U3_FAIL;
                 }
-                dsym = dist_p[dist_used];
-                didx = dist_used;
-                dist_used += (uint32_t)1;
-                sb = (uint32_t)dsym >> 3;
-                slow3 = (uint32_t)dsym & (uint32_t)7;
-                if (sb != (uint32_t)0) {
-                    uint32_t lk;
-                    size_t spos;
-                    size_t sbyte;
-                    uint32_t ssh;
-                    lk = didx & (uint32_t)7;
-                    if (lane_p[lk] == NULL) {
-                        return LZ_U3_FAIL;
-                    }
-                    /* R10-TEXTDEC: local bitpos (never written back);
-                     * window check first: sb<=31 makes sbyte+8<=cby
-                     * imply spos+sb<=cbits, so the bounds check runs
-                     * only when the window misses (same FAILs, dst
-                     * unwritten before either; bitpos<=cbits+31 by
-                     * checked-advance induction, so no size_t wrap). */
-                    spos = bitpos[lk];
-                    sbyte = spos >> 3;
-                    ssh = (uint32_t)(spos & (size_t)7);
-                    if (sbyte + (size_t)8 <= lane_cby[lk]) {
-                        uint64_t w64 = lz_u3_mc_ld64(lane_p[lk] + sbyte);
-                        suffix = (uint32_t)(w64 >> ssh) &
-                            (((uint32_t)1 << sb) - (uint32_t)1);
-                        bitpos[lk] = spos + (size_t)sb;
-                    } else if (spos + (size_t)sb > lane_cbits[lk]) {
-                        return LZ_U3_FAIL;
-                    } else {
-                        lanes->l[lk].bitpos = bitpos[lk];
-                        if (lz_u3_suffix_bits(&lanes->l[lk], sb,
-                                              &suffix) != LZ_U3_OK) {
-                            return LZ_U3_FAIL;
-                        }
-                        bitpos[lk] = lanes->l[lk].bitpos;
-                    }
+                /* (5) match-len (short inline, escape calls out; sel split
+                 * hoisted into the dist legs above). */
+                if (ml_short != ml_esc) {
+                    mlen = ml_short + (uint32_t)2;
+                    lok = LZ_U3_OK;
+                } else {
+                    lok = lz_u3_match_len(sel, len_f, &ss[1], &len_used, &mlen);
                 }
-                d = lz_u3_dist(sb, slow3, suffix);
-                /* R10-TEXTDEC: new-leg match-len short/esc + scalar
-                 * push inline (dedups the sel<=3 branches below). */
-                ml_short = (((sel - (uint32_t)4) << 3) | len_f) & (uint32_t)31;
-                ml_esc = (uint32_t)31;
-                r3 = r2;
-                r2 = r1;
-                r1 = r0;
-                r0 = d;
-            }
-            /* (4) C13 single unsigned compare: (d-1)>=w is exact
-             * (w<=dst_capacity<=0x7FFFFFFF by the entry gate; d==0
-             * wraps to UINT32_MAX which always fails; w==0 fails
-             * both forms on every d). */
-            if ((uint32_t)(d - (uint32_t)1) >= (uint32_t)(w_tot + wblk)) {
-                return LZ_U3_FAIL;
-            }
-            /* (5) match-len (short inline, escape calls out; sel split
-             * hoisted into the dist legs above). */
-            if (ml_short != ml_esc) {
-                mlen = ml_short + (uint32_t)2;
-                lok = LZ_U3_OK;
-            } else {
-                lok = lz_u3_match_len(sel, len_f, &ss[1], &len_used, &mlen);
-            }
-            if (lz_u2_c16_ok(lok) != LZ_U2_OK) {
-                return LZ_U3_FAIL;
-            }
-            /* (6) match-copy (same clamp; room checks dead: wblk<=ds<room,
-             * take<=ds-wblk<room-wblk).
-             * R10-TEXTDEC: inline take<=16 on the d>=take leg (66.1%
-             * take<=8, 33.8% take 9-16 on text-L9; memcpy kept past
-             * 16, match_copy past d<take). d>=take ranges are disjoint
-             * (src end w-d+take<=w=dst start, c13 d>=1); overlapping
-             * wide stores rewrite identical bytes, so every form is
-             * byte-exact with no overrun (R-014); take==0 skips (the
-             * old match_copy(0) leg is a proven no-op). */
-            take = (size_t)mlen;
-            if (take > (size_t)ds - wblk) {
-                take = (size_t)ds - wblk;
-            }
-            if ((size_t)d >= take) {
-                size_t moff = w_tot + wblk;
-                if (take <= (size_t)8) {
-                    if (take <= (size_t)3) {
-                        if (take != (size_t)0) {
-                            dst[moff] = dst[moff - (size_t)d];
-                            if (take > (size_t)1) {
-                                dst[moff + (size_t)1] =
-                                    dst[moff + (size_t)1 - (size_t)d];
-                                if (take > (size_t)2) {
-                                    dst[moff + (size_t)2] =
-                                        dst[moff + (size_t)2 - (size_t)d];
+                if (lz_u2_c16_ok(lok) != LZ_U2_OK) {
+                    return LZ_U3_FAIL;
+                }
+                /* (6) match-copy (same clamp; room checks dead: wblk<=ds<room,
+                 * take<=ds-wblk<room-wblk).
+                 * R10-TEXTDEC: inline take<=16 on the d>=take leg (66.1%
+                 * take<=8, 33.8% take 9-16 on text-L9; memcpy kept past
+                 * 16, match_copy past d<take). d>=take ranges are disjoint
+                 * (src end w-d+take<=w=dst start, c13 d>=1); overlapping
+                 * wide stores rewrite identical bytes, so every form is
+                 * byte-exact with no overrun (R-014); take==0 skips (the
+                 * old match_copy(0) leg is a proven no-op). */
+                take = (size_t)mlen;
+                if (take > (size_t)ds - wblk) {
+                    take = (size_t)ds - wblk;
+                }
+                if ((size_t)d >= take) {
+                    size_t moff = w_tot + wblk;
+                    if (take <= (size_t)8) {
+                        if (take <= (size_t)3) {
+                            if (take != (size_t)0) {
+                                dst[moff] = dst[moff - (size_t)d];
+                                if (take > (size_t)1) {
+                                    dst[moff + (size_t)1] =
+                                        dst[moff + (size_t)1 - (size_t)d];
+                                    if (take > (size_t)2) {
+                                        dst[moff + (size_t)2] =
+                                            dst[moff + (size_t)2 - (size_t)d];
+                                    }
                                 }
                             }
+                        } else {
+                            uint32_t mlo =
+                                lz_u3_mc_ld32(dst + moff - (size_t)d);
+                            uint32_t mhi =
+                                lz_u3_mc_ld32(dst + moff - (size_t)d + take -
+                                              (size_t)4);
+                            lz_u3_mc_st32(dst + moff, mlo);
+                            lz_u3_mc_st32(dst + moff + take - (size_t)4, mhi);
                         }
+                    } else if (take <= (size_t)16) {
+                        uint64_t mlo = lz_u3_mc_ld64(dst + moff - (size_t)d);
+                        uint64_t mhi =
+                            lz_u3_mc_ld64(dst + moff - (size_t)d + take -
+                                          (size_t)8);
+                        lz_u3_mc_st64(dst + moff, mlo);
+                        lz_u3_mc_st64(dst + moff + take - (size_t)8, mhi);
                     } else {
-                        uint32_t mlo =
-                            lz_u3_mc_ld32(dst + moff - (size_t)d);
-                        uint32_t mhi =
-                            lz_u3_mc_ld32(dst + moff - (size_t)d + take -
-                                          (size_t)4);
-                        lz_u3_mc_st32(dst + moff, mlo);
-                        lz_u3_mc_st32(dst + moff + take - (size_t)4, mhi);
+                        memcpy(dst + moff, dst + moff - (size_t)d, take);
                     }
-                } else if (take <= (size_t)16) {
-                    uint64_t mlo = lz_u3_mc_ld64(dst + moff - (size_t)d);
-                    uint64_t mhi =
-                        lz_u3_mc_ld64(dst + moff - (size_t)d + take -
-                                      (size_t)8);
-                    lz_u3_mc_st64(dst + moff, mlo);
-                    lz_u3_mc_st64(dst + moff + take - (size_t)8, mhi);
                 } else {
-                    memcpy(dst + moff, dst + moff - (size_t)d, take);
+                    lz_u3_match_copy(dst, w_tot + wblk, d, take);
                 }
-            } else {
-                lz_u3_match_copy(dst, w_tot + wblk, d, take);
+                wblk += take;
+                /* (7) recents update hoisted into the dist legs above. */
+                if (sel >= (uint32_t)4) {
+                    margin_ok = (int)0;
+                }
+                ti += (uint32_t)1;
             }
-            wblk += take;
-            /* (7) recents update hoisted into the dist legs above. */
         }
         /* R10-TEXTDEC: success-only recents writeback (carries across
          * blocks; FAIL exits above skip it: recent[] dead there). */
