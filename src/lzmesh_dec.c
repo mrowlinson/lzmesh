@@ -22,6 +22,62 @@ __attribute__((destructor)) static void t9d5_d_dump(void) {
 #define T9D5_COUNT(x) ((void)0)
 #endif
 
+/* TSPEC census (duet-dec-tspec seat): grouped-slot branch taken-counts +
+ * take/litf histograms on the text token loop. Compiles to nothing unless
+ * -DTSPEC_CENSUS. Probes are TSPEC_HIT/TSPEC_TAKE/TSPEC_LITF/TSPEC_DLT. */
+#ifdef TSPEC_CENSUS
+#include <stdio.h>
+enum {
+    TSPEC_G_EVAL, TSPEC_G_ENTER,
+    TSPEC_LITSKIP, TSPEC_LITSHORT, TSPEC_LITCLAMP, TSPEC_LITLAD3,
+    TSPEC_LITNZ, TSPEC_LITG1, TSPEC_LITG2,
+    TSPEC_JSBNZ, TSPEC_MLSHORT, TSPEC_MCLAMP,
+    TSPEC_DGE, TSPEC_M8, TSPEC_M3, TSPEC_MNZ, TSPEC_MG1, TSPEC_MG2,
+    TSPEC_M16, TSPEC_D16LT, TSPEC_CAPSHORT, TSPEC_U16,
+    TSPEC_N
+};
+static unsigned long tspec_c[TSPEC_N];
+static unsigned long tspec_take_hist[48];
+static unsigned long tspec_dlt_hist[48];
+static unsigned long tspec_litf_hist[4];
+__attribute__((destructor)) static void tspec_dump(void) {
+    static const char *nm[TSPEC_N] = {
+        "g_eval", "g_enter",
+        "litskip", "litshort", "litclamp", "litlad3",
+        "litnz", "litg1", "litg2",
+        "jsbnz", "mlshort", "mclamp",
+        "dge", "m8", "m3", "mnz", "mg1", "mg2",
+        "m16", "d16lt", "capshort", "u16"
+    };
+    int i;
+    for (i = 0; i < TSPEC_N; i++) {
+        fprintf(stderr, "TSPEC %s=%lu\n", nm[i], tspec_c[i]);
+    }
+    for (i = 0; i < 48; i++) {
+        fprintf(stderr, "TSPEC take%02d=%lu\n", i, tspec_take_hist[i]);
+    }
+    for (i = 0; i < 48; i++) {
+        fprintf(stderr, "TSPEC dlt%02d=%lu\n", i, tspec_dlt_hist[i]);
+    }
+    for (i = 0; i < 4; i++) {
+        fprintf(stderr, "TSPEC litf%d=%lu\n", i, tspec_litf_hist[i]);
+    }
+}
+#define TSPEC_HIT(x) (tspec_c[TSPEC_ ## x]++)
+#define TSPEC_TAKE(v) do { size_t _tv = (size_t)(v); \
+    tspec_take_hist[_tv < (size_t)47 ? _tv : (size_t)47]++; \
+    if ((d) < (uint32_t)16) { tspec_c[TSPEC_D16LT]++; } \
+    if (wblk + (size_t)16 > (size_t)(ds)) { tspec_c[TSPEC_CAPSHORT]++; } } while (0)
+#define TSPEC_DLT(v) do { size_t _dv = (size_t)(v); \
+    tspec_dlt_hist[_dv < (size_t)47 ? _dv : (size_t)47]++; } while (0)
+#define TSPEC_LITF(v) (tspec_litf_hist[(v) & (uint32_t)3]++)
+#else
+#define TSPEC_HIT(x) ((void)0)
+#define TSPEC_TAKE(v) ((void)0)
+#define TSPEC_DLT(v) ((void)0)
+#define TSPEC_LITF(v) ((void)0)
+#endif
+
 /* P3-N2: NEON match-copy fast path switch. arm_neon.h intrinsics only
  * (no asm). LZMESH_SCALAR (compile -DLZMESH_SCALAR=1 or make
  * LZMESH_SCALAR=1) forces scalar; off-__ARM_NEON defaults scalar
@@ -2808,11 +2864,13 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
             size_t take;
             int lok;
             int grouped = (int)0;
+            TSPEC_HIT(G_EVAL);
             if (mdead == (int)0 &&
                 blk_null == (int)0 &&
                 ti + (uint32_t)8 <= ss[0].n &&
                 dist_used + (uint32_t)8 <= dist_n &&
                 (lz_u3_mc_ld64(tok_p + ti) & (uint64_t)0x2020202020202020) == (uint64_t)0x2020202020202020) {
+                TSPEC_HIT(G_ENTER);
                 /* margin guard: 8 lanes hold M=72 bytes => next K=16 groups window-safe. */
                 if ((margin_ok == (int)0 || mleft == (uint32_t)0) && mdead == (int)0) {
                     margin_ok = (int)0;
@@ -2854,6 +2912,7 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                         lit_f = ((uint32_t)t >> 6) & (uint32_t)3;
                         sel = ((uint32_t)t >> 3) & (uint32_t)7;
                         len_f = (uint32_t)t & (uint32_t)7;
+                        TSPEC_LITF(lit_f);
 
                         /* (1) lit-len (short inline, escape calls out; same as generic).
                          * R23-TL9D-P4: lit_f==0 (82% text-L9) skips the lit block:
@@ -2864,10 +2923,12 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                          * by loop bound). lit_used/wblk += 0 no-ops. Same bytes,
                          * same FAILs (skip fires only when checks provably pass). */
                         if (lit_f == (uint32_t)0) {
+                            TSPEC_HIT(LITSKIP);
                             run = (uint32_t)0;
                             take = (size_t)0;
                         } else {
                             if (lit_f != (uint32_t)3) {
+                                TSPEC_HIT(LITSHORT);
                                 run = lit_f;
                                 lok = LZ_U3_OK;
                             } else {
@@ -2887,18 +2948,23 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                             }
                             take = (size_t)run;
                             if (take > (size_t)ds - wblk) {
+                                TSPEC_HIT(LITCLAMP);
                                 take = (size_t)ds - wblk;
                             }
                             if (take > (size_t)lit_n - (size_t)lit_used) {
                                 return LZ_U3_FAIL;
                             }
                             if (take <= (size_t)3) {
+                                TSPEC_HIT(LITLAD3);
                                 if (take != (size_t)0) {
+                                    TSPEC_HIT(LITNZ);
                                     dst[w_tot + wblk] = lit_p[lit_used];
                                     if (take > (size_t)1) {
+                                        TSPEC_HIT(LITG1);
                                         dst[w_tot + wblk + (size_t)1] =
                                             lit_p[lit_used + (uint32_t)1];
                                         if (take > (size_t)2) {
+                                            TSPEC_HIT(LITG2);
                                             dst[w_tot + wblk + (size_t)2] =
                                                 lit_p[lit_used + (uint32_t)2];
                                         }
@@ -2917,6 +2983,7 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                             uint32_t jslow3 = (uint32_t)jdsym & (uint32_t)7;
                             uint32_t jsuffix = (uint32_t)0;
                             if (jsb != (uint32_t)0) {
+                                TSPEC_HIT(JSBNZ);
                                 uint32_t jlk = (dist_used + (uint32_t)0) & (uint32_t)7;
                                 size_t jsbyte = sk0 >> 3;
                                 uint32_t jssh = (uint32_t)(sk0 & (size_t)7);
@@ -2939,6 +3006,7 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                         /* (5) match-len (short inline, escape calls out; sel split
                          * hoisted into the dist legs above). */
                         if (ml_short != ml_esc) {
+                            TSPEC_HIT(MLSHORT);
                             mlen = ml_short + (uint32_t)2;
                             lok = LZ_U3_OK;
                         } else {
@@ -2958,18 +3026,36 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                          * old match_copy(0) leg is a proven no-op). */
                         take = (size_t)mlen;
                         if (take > (size_t)ds - wblk) {
+                            TSPEC_HIT(MCLAMP);
                             take = (size_t)ds - wblk;
                         }
-                        if ((size_t)d >= take) {
+                        TSPEC_TAKE(take);
+                        if (d >= (uint32_t)16 && take <= (size_t)16 &&
+                            wblk + (size_t)16 <= (size_t)ds) {
+                            TSPEC_HIT(U16);
+                            size_t umoff = w_tot + wblk;
+                            uint64_t umlo =
+                                lz_u3_mc_ld64(dst + umoff - (size_t)d);
+                            uint64_t umhi =
+                                lz_u3_mc_ld64(dst + umoff - (size_t)d + (size_t)8);
+                            lz_u3_mc_st64(dst + umoff, umlo);
+                            lz_u3_mc_st64(dst + umoff + (size_t)8, umhi);
+                        } else if ((size_t)d >= take) {
+                            TSPEC_HIT(DGE);
                             size_t moff = w_tot + wblk;
                             if (take <= (size_t)8) {
+                                TSPEC_HIT(M8);
                                 if (take <= (size_t)3) {
+                                    TSPEC_HIT(M3);
                                     if (take != (size_t)0) {
+                                        TSPEC_HIT(MNZ);
                                         dst[moff] = dst[moff - (size_t)d];
                                         if (take > (size_t)1) {
+                                            TSPEC_HIT(MG1);
                                             dst[moff + (size_t)1] =
                                                 dst[moff + (size_t)1 - (size_t)d];
                                             if (take > (size_t)2) {
+                                                TSPEC_HIT(MG2);
                                                 dst[moff + (size_t)2] =
                                                     dst[moff + (size_t)2 - (size_t)d];
                                             }
@@ -2985,6 +3071,7 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                                     lz_u3_mc_st32(dst + moff + take - (size_t)4, mhi);
                                 }
                             } else if (take <= (size_t)16) {
+                                TSPEC_HIT(M16);
                                 uint64_t mlo = lz_u3_mc_ld64(dst + moff - (size_t)d);
                                 uint64_t mhi =
                                     lz_u3_mc_ld64(dst + moff - (size_t)d + take -
@@ -2995,6 +3082,7 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                                 memcpy(dst + moff, dst + moff - (size_t)d, take);
                             }
                         } else {
+                            TSPEC_DLT(take);
                             lz_u3_match_copy(dst, w_tot + wblk, d, take);
                         }
                         wblk += take;
@@ -3010,6 +3098,7 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                         lit_f = ((uint32_t)t >> 6) & (uint32_t)3;
                         sel = ((uint32_t)t >> 3) & (uint32_t)7;
                         len_f = (uint32_t)t & (uint32_t)7;
+                        TSPEC_LITF(lit_f);
 
                         /* (1) lit-len (short inline, escape calls out; same as generic).
                          * R23-TL9D-P4: lit_f==0 (82% text-L9) skips the lit block:
@@ -3020,10 +3109,12 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                          * by loop bound). lit_used/wblk += 0 no-ops. Same bytes,
                          * same FAILs (skip fires only when checks provably pass). */
                         if (lit_f == (uint32_t)0) {
+                            TSPEC_HIT(LITSKIP);
                             run = (uint32_t)0;
                             take = (size_t)0;
                         } else {
                             if (lit_f != (uint32_t)3) {
+                                TSPEC_HIT(LITSHORT);
                                 run = lit_f;
                                 lok = LZ_U3_OK;
                             } else {
@@ -3043,18 +3134,23 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                             }
                             take = (size_t)run;
                             if (take > (size_t)ds - wblk) {
+                                TSPEC_HIT(LITCLAMP);
                                 take = (size_t)ds - wblk;
                             }
                             if (take > (size_t)lit_n - (size_t)lit_used) {
                                 return LZ_U3_FAIL;
                             }
                             if (take <= (size_t)3) {
+                                TSPEC_HIT(LITLAD3);
                                 if (take != (size_t)0) {
+                                    TSPEC_HIT(LITNZ);
                                     dst[w_tot + wblk] = lit_p[lit_used];
                                     if (take > (size_t)1) {
+                                        TSPEC_HIT(LITG1);
                                         dst[w_tot + wblk + (size_t)1] =
                                             lit_p[lit_used + (uint32_t)1];
                                         if (take > (size_t)2) {
+                                            TSPEC_HIT(LITG2);
                                             dst[w_tot + wblk + (size_t)2] =
                                                 lit_p[lit_used + (uint32_t)2];
                                         }
@@ -3073,6 +3169,7 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                             uint32_t jslow3 = (uint32_t)jdsym & (uint32_t)7;
                             uint32_t jsuffix = (uint32_t)0;
                             if (jsb != (uint32_t)0) {
+                                TSPEC_HIT(JSBNZ);
                                 uint32_t jlk = (dist_used + (uint32_t)1) & (uint32_t)7;
                                 size_t jsbyte = sk1 >> 3;
                                 uint32_t jssh = (uint32_t)(sk1 & (size_t)7);
@@ -3095,6 +3192,7 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                         /* (5) match-len (short inline, escape calls out; sel split
                          * hoisted into the dist legs above). */
                         if (ml_short != ml_esc) {
+                            TSPEC_HIT(MLSHORT);
                             mlen = ml_short + (uint32_t)2;
                             lok = LZ_U3_OK;
                         } else {
@@ -3114,18 +3212,36 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                          * old match_copy(0) leg is a proven no-op). */
                         take = (size_t)mlen;
                         if (take > (size_t)ds - wblk) {
+                            TSPEC_HIT(MCLAMP);
                             take = (size_t)ds - wblk;
                         }
-                        if ((size_t)d >= take) {
+                        TSPEC_TAKE(take);
+                        if (d >= (uint32_t)16 && take <= (size_t)16 &&
+                            wblk + (size_t)16 <= (size_t)ds) {
+                            TSPEC_HIT(U16);
+                            size_t umoff = w_tot + wblk;
+                            uint64_t umlo =
+                                lz_u3_mc_ld64(dst + umoff - (size_t)d);
+                            uint64_t umhi =
+                                lz_u3_mc_ld64(dst + umoff - (size_t)d + (size_t)8);
+                            lz_u3_mc_st64(dst + umoff, umlo);
+                            lz_u3_mc_st64(dst + umoff + (size_t)8, umhi);
+                        } else if ((size_t)d >= take) {
+                            TSPEC_HIT(DGE);
                             size_t moff = w_tot + wblk;
                             if (take <= (size_t)8) {
+                                TSPEC_HIT(M8);
                                 if (take <= (size_t)3) {
+                                    TSPEC_HIT(M3);
                                     if (take != (size_t)0) {
+                                        TSPEC_HIT(MNZ);
                                         dst[moff] = dst[moff - (size_t)d];
                                         if (take > (size_t)1) {
+                                            TSPEC_HIT(MG1);
                                             dst[moff + (size_t)1] =
                                                 dst[moff + (size_t)1 - (size_t)d];
                                             if (take > (size_t)2) {
+                                                TSPEC_HIT(MG2);
                                                 dst[moff + (size_t)2] =
                                                     dst[moff + (size_t)2 - (size_t)d];
                                             }
@@ -3141,6 +3257,7 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                                     lz_u3_mc_st32(dst + moff + take - (size_t)4, mhi);
                                 }
                             } else if (take <= (size_t)16) {
+                                TSPEC_HIT(M16);
                                 uint64_t mlo = lz_u3_mc_ld64(dst + moff - (size_t)d);
                                 uint64_t mhi =
                                     lz_u3_mc_ld64(dst + moff - (size_t)d + take -
@@ -3151,6 +3268,7 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                                 memcpy(dst + moff, dst + moff - (size_t)d, take);
                             }
                         } else {
+                            TSPEC_DLT(take);
                             lz_u3_match_copy(dst, w_tot + wblk, d, take);
                         }
                         wblk += take;
@@ -3166,6 +3284,7 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                         lit_f = ((uint32_t)t >> 6) & (uint32_t)3;
                         sel = ((uint32_t)t >> 3) & (uint32_t)7;
                         len_f = (uint32_t)t & (uint32_t)7;
+                        TSPEC_LITF(lit_f);
 
                         /* (1) lit-len (short inline, escape calls out; same as generic).
                          * R23-TL9D-P4: lit_f==0 (82% text-L9) skips the lit block:
@@ -3176,10 +3295,12 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                          * by loop bound). lit_used/wblk += 0 no-ops. Same bytes,
                          * same FAILs (skip fires only when checks provably pass). */
                         if (lit_f == (uint32_t)0) {
+                            TSPEC_HIT(LITSKIP);
                             run = (uint32_t)0;
                             take = (size_t)0;
                         } else {
                             if (lit_f != (uint32_t)3) {
+                                TSPEC_HIT(LITSHORT);
                                 run = lit_f;
                                 lok = LZ_U3_OK;
                             } else {
@@ -3199,18 +3320,23 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                             }
                             take = (size_t)run;
                             if (take > (size_t)ds - wblk) {
+                                TSPEC_HIT(LITCLAMP);
                                 take = (size_t)ds - wblk;
                             }
                             if (take > (size_t)lit_n - (size_t)lit_used) {
                                 return LZ_U3_FAIL;
                             }
                             if (take <= (size_t)3) {
+                                TSPEC_HIT(LITLAD3);
                                 if (take != (size_t)0) {
+                                    TSPEC_HIT(LITNZ);
                                     dst[w_tot + wblk] = lit_p[lit_used];
                                     if (take > (size_t)1) {
+                                        TSPEC_HIT(LITG1);
                                         dst[w_tot + wblk + (size_t)1] =
                                             lit_p[lit_used + (uint32_t)1];
                                         if (take > (size_t)2) {
+                                            TSPEC_HIT(LITG2);
                                             dst[w_tot + wblk + (size_t)2] =
                                                 lit_p[lit_used + (uint32_t)2];
                                         }
@@ -3229,6 +3355,7 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                             uint32_t jslow3 = (uint32_t)jdsym & (uint32_t)7;
                             uint32_t jsuffix = (uint32_t)0;
                             if (jsb != (uint32_t)0) {
+                                TSPEC_HIT(JSBNZ);
                                 uint32_t jlk = (dist_used + (uint32_t)2) & (uint32_t)7;
                                 size_t jsbyte = sk2 >> 3;
                                 uint32_t jssh = (uint32_t)(sk2 & (size_t)7);
@@ -3251,6 +3378,7 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                         /* (5) match-len (short inline, escape calls out; sel split
                          * hoisted into the dist legs above). */
                         if (ml_short != ml_esc) {
+                            TSPEC_HIT(MLSHORT);
                             mlen = ml_short + (uint32_t)2;
                             lok = LZ_U3_OK;
                         } else {
@@ -3270,18 +3398,36 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                          * old match_copy(0) leg is a proven no-op). */
                         take = (size_t)mlen;
                         if (take > (size_t)ds - wblk) {
+                            TSPEC_HIT(MCLAMP);
                             take = (size_t)ds - wblk;
                         }
-                        if ((size_t)d >= take) {
+                        TSPEC_TAKE(take);
+                        if (d >= (uint32_t)16 && take <= (size_t)16 &&
+                            wblk + (size_t)16 <= (size_t)ds) {
+                            TSPEC_HIT(U16);
+                            size_t umoff = w_tot + wblk;
+                            uint64_t umlo =
+                                lz_u3_mc_ld64(dst + umoff - (size_t)d);
+                            uint64_t umhi =
+                                lz_u3_mc_ld64(dst + umoff - (size_t)d + (size_t)8);
+                            lz_u3_mc_st64(dst + umoff, umlo);
+                            lz_u3_mc_st64(dst + umoff + (size_t)8, umhi);
+                        } else if ((size_t)d >= take) {
+                            TSPEC_HIT(DGE);
                             size_t moff = w_tot + wblk;
                             if (take <= (size_t)8) {
+                                TSPEC_HIT(M8);
                                 if (take <= (size_t)3) {
+                                    TSPEC_HIT(M3);
                                     if (take != (size_t)0) {
+                                        TSPEC_HIT(MNZ);
                                         dst[moff] = dst[moff - (size_t)d];
                                         if (take > (size_t)1) {
+                                            TSPEC_HIT(MG1);
                                             dst[moff + (size_t)1] =
                                                 dst[moff + (size_t)1 - (size_t)d];
                                             if (take > (size_t)2) {
+                                                TSPEC_HIT(MG2);
                                                 dst[moff + (size_t)2] =
                                                     dst[moff + (size_t)2 - (size_t)d];
                                             }
@@ -3297,6 +3443,7 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                                     lz_u3_mc_st32(dst + moff + take - (size_t)4, mhi);
                                 }
                             } else if (take <= (size_t)16) {
+                                TSPEC_HIT(M16);
                                 uint64_t mlo = lz_u3_mc_ld64(dst + moff - (size_t)d);
                                 uint64_t mhi =
                                     lz_u3_mc_ld64(dst + moff - (size_t)d + take -
@@ -3307,6 +3454,7 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                                 memcpy(dst + moff, dst + moff - (size_t)d, take);
                             }
                         } else {
+                            TSPEC_DLT(take);
                             lz_u3_match_copy(dst, w_tot + wblk, d, take);
                         }
                         wblk += take;
@@ -3322,6 +3470,7 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                         lit_f = ((uint32_t)t >> 6) & (uint32_t)3;
                         sel = ((uint32_t)t >> 3) & (uint32_t)7;
                         len_f = (uint32_t)t & (uint32_t)7;
+                        TSPEC_LITF(lit_f);
 
                         /* (1) lit-len (short inline, escape calls out; same as generic).
                          * R23-TL9D-P4: lit_f==0 (82% text-L9) skips the lit block:
@@ -3332,10 +3481,12 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                          * by loop bound). lit_used/wblk += 0 no-ops. Same bytes,
                          * same FAILs (skip fires only when checks provably pass). */
                         if (lit_f == (uint32_t)0) {
+                            TSPEC_HIT(LITSKIP);
                             run = (uint32_t)0;
                             take = (size_t)0;
                         } else {
                             if (lit_f != (uint32_t)3) {
+                                TSPEC_HIT(LITSHORT);
                                 run = lit_f;
                                 lok = LZ_U3_OK;
                             } else {
@@ -3355,18 +3506,23 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                             }
                             take = (size_t)run;
                             if (take > (size_t)ds - wblk) {
+                                TSPEC_HIT(LITCLAMP);
                                 take = (size_t)ds - wblk;
                             }
                             if (take > (size_t)lit_n - (size_t)lit_used) {
                                 return LZ_U3_FAIL;
                             }
                             if (take <= (size_t)3) {
+                                TSPEC_HIT(LITLAD3);
                                 if (take != (size_t)0) {
+                                    TSPEC_HIT(LITNZ);
                                     dst[w_tot + wblk] = lit_p[lit_used];
                                     if (take > (size_t)1) {
+                                        TSPEC_HIT(LITG1);
                                         dst[w_tot + wblk + (size_t)1] =
                                             lit_p[lit_used + (uint32_t)1];
                                         if (take > (size_t)2) {
+                                            TSPEC_HIT(LITG2);
                                             dst[w_tot + wblk + (size_t)2] =
                                                 lit_p[lit_used + (uint32_t)2];
                                         }
@@ -3385,6 +3541,7 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                             uint32_t jslow3 = (uint32_t)jdsym & (uint32_t)7;
                             uint32_t jsuffix = (uint32_t)0;
                             if (jsb != (uint32_t)0) {
+                                TSPEC_HIT(JSBNZ);
                                 uint32_t jlk = (dist_used + (uint32_t)3) & (uint32_t)7;
                                 size_t jsbyte = sk3 >> 3;
                                 uint32_t jssh = (uint32_t)(sk3 & (size_t)7);
@@ -3407,6 +3564,7 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                         /* (5) match-len (short inline, escape calls out; sel split
                          * hoisted into the dist legs above). */
                         if (ml_short != ml_esc) {
+                            TSPEC_HIT(MLSHORT);
                             mlen = ml_short + (uint32_t)2;
                             lok = LZ_U3_OK;
                         } else {
@@ -3426,18 +3584,36 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                          * old match_copy(0) leg is a proven no-op). */
                         take = (size_t)mlen;
                         if (take > (size_t)ds - wblk) {
+                            TSPEC_HIT(MCLAMP);
                             take = (size_t)ds - wblk;
                         }
-                        if ((size_t)d >= take) {
+                        TSPEC_TAKE(take);
+                        if (d >= (uint32_t)16 && take <= (size_t)16 &&
+                            wblk + (size_t)16 <= (size_t)ds) {
+                            TSPEC_HIT(U16);
+                            size_t umoff = w_tot + wblk;
+                            uint64_t umlo =
+                                lz_u3_mc_ld64(dst + umoff - (size_t)d);
+                            uint64_t umhi =
+                                lz_u3_mc_ld64(dst + umoff - (size_t)d + (size_t)8);
+                            lz_u3_mc_st64(dst + umoff, umlo);
+                            lz_u3_mc_st64(dst + umoff + (size_t)8, umhi);
+                        } else if ((size_t)d >= take) {
+                            TSPEC_HIT(DGE);
                             size_t moff = w_tot + wblk;
                             if (take <= (size_t)8) {
+                                TSPEC_HIT(M8);
                                 if (take <= (size_t)3) {
+                                    TSPEC_HIT(M3);
                                     if (take != (size_t)0) {
+                                        TSPEC_HIT(MNZ);
                                         dst[moff] = dst[moff - (size_t)d];
                                         if (take > (size_t)1) {
+                                            TSPEC_HIT(MG1);
                                             dst[moff + (size_t)1] =
                                                 dst[moff + (size_t)1 - (size_t)d];
                                             if (take > (size_t)2) {
+                                                TSPEC_HIT(MG2);
                                                 dst[moff + (size_t)2] =
                                                     dst[moff + (size_t)2 - (size_t)d];
                                             }
@@ -3453,6 +3629,7 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                                     lz_u3_mc_st32(dst + moff + take - (size_t)4, mhi);
                                 }
                             } else if (take <= (size_t)16) {
+                                TSPEC_HIT(M16);
                                 uint64_t mlo = lz_u3_mc_ld64(dst + moff - (size_t)d);
                                 uint64_t mhi =
                                     lz_u3_mc_ld64(dst + moff - (size_t)d + take -
@@ -3463,6 +3640,7 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                                 memcpy(dst + moff, dst + moff - (size_t)d, take);
                             }
                         } else {
+                            TSPEC_DLT(take);
                             lz_u3_match_copy(dst, w_tot + wblk, d, take);
                         }
                         wblk += take;
@@ -3478,6 +3656,7 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                         lit_f = ((uint32_t)t >> 6) & (uint32_t)3;
                         sel = ((uint32_t)t >> 3) & (uint32_t)7;
                         len_f = (uint32_t)t & (uint32_t)7;
+                        TSPEC_LITF(lit_f);
 
                         /* (1) lit-len (short inline, escape calls out; same as generic).
                          * R23-TL9D-P4: lit_f==0 (82% text-L9) skips the lit block:
@@ -3488,10 +3667,12 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                          * by loop bound). lit_used/wblk += 0 no-ops. Same bytes,
                          * same FAILs (skip fires only when checks provably pass). */
                         if (lit_f == (uint32_t)0) {
+                            TSPEC_HIT(LITSKIP);
                             run = (uint32_t)0;
                             take = (size_t)0;
                         } else {
                             if (lit_f != (uint32_t)3) {
+                                TSPEC_HIT(LITSHORT);
                                 run = lit_f;
                                 lok = LZ_U3_OK;
                             } else {
@@ -3511,18 +3692,23 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                             }
                             take = (size_t)run;
                             if (take > (size_t)ds - wblk) {
+                                TSPEC_HIT(LITCLAMP);
                                 take = (size_t)ds - wblk;
                             }
                             if (take > (size_t)lit_n - (size_t)lit_used) {
                                 return LZ_U3_FAIL;
                             }
                             if (take <= (size_t)3) {
+                                TSPEC_HIT(LITLAD3);
                                 if (take != (size_t)0) {
+                                    TSPEC_HIT(LITNZ);
                                     dst[w_tot + wblk] = lit_p[lit_used];
                                     if (take > (size_t)1) {
+                                        TSPEC_HIT(LITG1);
                                         dst[w_tot + wblk + (size_t)1] =
                                             lit_p[lit_used + (uint32_t)1];
                                         if (take > (size_t)2) {
+                                            TSPEC_HIT(LITG2);
                                             dst[w_tot + wblk + (size_t)2] =
                                                 lit_p[lit_used + (uint32_t)2];
                                         }
@@ -3541,6 +3727,7 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                             uint32_t jslow3 = (uint32_t)jdsym & (uint32_t)7;
                             uint32_t jsuffix = (uint32_t)0;
                             if (jsb != (uint32_t)0) {
+                                TSPEC_HIT(JSBNZ);
                                 uint32_t jlk = (dist_used + (uint32_t)4) & (uint32_t)7;
                                 size_t jsbyte = sk4 >> 3;
                                 uint32_t jssh = (uint32_t)(sk4 & (size_t)7);
@@ -3563,6 +3750,7 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                         /* (5) match-len (short inline, escape calls out; sel split
                          * hoisted into the dist legs above). */
                         if (ml_short != ml_esc) {
+                            TSPEC_HIT(MLSHORT);
                             mlen = ml_short + (uint32_t)2;
                             lok = LZ_U3_OK;
                         } else {
@@ -3582,18 +3770,36 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                          * old match_copy(0) leg is a proven no-op). */
                         take = (size_t)mlen;
                         if (take > (size_t)ds - wblk) {
+                            TSPEC_HIT(MCLAMP);
                             take = (size_t)ds - wblk;
                         }
-                        if ((size_t)d >= take) {
+                        TSPEC_TAKE(take);
+                        if (d >= (uint32_t)16 && take <= (size_t)16 &&
+                            wblk + (size_t)16 <= (size_t)ds) {
+                            TSPEC_HIT(U16);
+                            size_t umoff = w_tot + wblk;
+                            uint64_t umlo =
+                                lz_u3_mc_ld64(dst + umoff - (size_t)d);
+                            uint64_t umhi =
+                                lz_u3_mc_ld64(dst + umoff - (size_t)d + (size_t)8);
+                            lz_u3_mc_st64(dst + umoff, umlo);
+                            lz_u3_mc_st64(dst + umoff + (size_t)8, umhi);
+                        } else if ((size_t)d >= take) {
+                            TSPEC_HIT(DGE);
                             size_t moff = w_tot + wblk;
                             if (take <= (size_t)8) {
+                                TSPEC_HIT(M8);
                                 if (take <= (size_t)3) {
+                                    TSPEC_HIT(M3);
                                     if (take != (size_t)0) {
+                                        TSPEC_HIT(MNZ);
                                         dst[moff] = dst[moff - (size_t)d];
                                         if (take > (size_t)1) {
+                                            TSPEC_HIT(MG1);
                                             dst[moff + (size_t)1] =
                                                 dst[moff + (size_t)1 - (size_t)d];
                                             if (take > (size_t)2) {
+                                                TSPEC_HIT(MG2);
                                                 dst[moff + (size_t)2] =
                                                     dst[moff + (size_t)2 - (size_t)d];
                                             }
@@ -3609,6 +3815,7 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                                     lz_u3_mc_st32(dst + moff + take - (size_t)4, mhi);
                                 }
                             } else if (take <= (size_t)16) {
+                                TSPEC_HIT(M16);
                                 uint64_t mlo = lz_u3_mc_ld64(dst + moff - (size_t)d);
                                 uint64_t mhi =
                                     lz_u3_mc_ld64(dst + moff - (size_t)d + take -
@@ -3619,6 +3826,7 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                                 memcpy(dst + moff, dst + moff - (size_t)d, take);
                             }
                         } else {
+                            TSPEC_DLT(take);
                             lz_u3_match_copy(dst, w_tot + wblk, d, take);
                         }
                         wblk += take;
@@ -3634,6 +3842,7 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                         lit_f = ((uint32_t)t >> 6) & (uint32_t)3;
                         sel = ((uint32_t)t >> 3) & (uint32_t)7;
                         len_f = (uint32_t)t & (uint32_t)7;
+                        TSPEC_LITF(lit_f);
 
                         /* (1) lit-len (short inline, escape calls out; same as generic).
                          * R23-TL9D-P4: lit_f==0 (82% text-L9) skips the lit block:
@@ -3644,10 +3853,12 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                          * by loop bound). lit_used/wblk += 0 no-ops. Same bytes,
                          * same FAILs (skip fires only when checks provably pass). */
                         if (lit_f == (uint32_t)0) {
+                            TSPEC_HIT(LITSKIP);
                             run = (uint32_t)0;
                             take = (size_t)0;
                         } else {
                             if (lit_f != (uint32_t)3) {
+                                TSPEC_HIT(LITSHORT);
                                 run = lit_f;
                                 lok = LZ_U3_OK;
                             } else {
@@ -3667,18 +3878,23 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                             }
                             take = (size_t)run;
                             if (take > (size_t)ds - wblk) {
+                                TSPEC_HIT(LITCLAMP);
                                 take = (size_t)ds - wblk;
                             }
                             if (take > (size_t)lit_n - (size_t)lit_used) {
                                 return LZ_U3_FAIL;
                             }
                             if (take <= (size_t)3) {
+                                TSPEC_HIT(LITLAD3);
                                 if (take != (size_t)0) {
+                                    TSPEC_HIT(LITNZ);
                                     dst[w_tot + wblk] = lit_p[lit_used];
                                     if (take > (size_t)1) {
+                                        TSPEC_HIT(LITG1);
                                         dst[w_tot + wblk + (size_t)1] =
                                             lit_p[lit_used + (uint32_t)1];
                                         if (take > (size_t)2) {
+                                            TSPEC_HIT(LITG2);
                                             dst[w_tot + wblk + (size_t)2] =
                                                 lit_p[lit_used + (uint32_t)2];
                                         }
@@ -3697,6 +3913,7 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                             uint32_t jslow3 = (uint32_t)jdsym & (uint32_t)7;
                             uint32_t jsuffix = (uint32_t)0;
                             if (jsb != (uint32_t)0) {
+                                TSPEC_HIT(JSBNZ);
                                 uint32_t jlk = (dist_used + (uint32_t)5) & (uint32_t)7;
                                 size_t jsbyte = sk5 >> 3;
                                 uint32_t jssh = (uint32_t)(sk5 & (size_t)7);
@@ -3719,6 +3936,7 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                         /* (5) match-len (short inline, escape calls out; sel split
                          * hoisted into the dist legs above). */
                         if (ml_short != ml_esc) {
+                            TSPEC_HIT(MLSHORT);
                             mlen = ml_short + (uint32_t)2;
                             lok = LZ_U3_OK;
                         } else {
@@ -3738,18 +3956,36 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                          * old match_copy(0) leg is a proven no-op). */
                         take = (size_t)mlen;
                         if (take > (size_t)ds - wblk) {
+                            TSPEC_HIT(MCLAMP);
                             take = (size_t)ds - wblk;
                         }
-                        if ((size_t)d >= take) {
+                        TSPEC_TAKE(take);
+                        if (d >= (uint32_t)16 && take <= (size_t)16 &&
+                            wblk + (size_t)16 <= (size_t)ds) {
+                            TSPEC_HIT(U16);
+                            size_t umoff = w_tot + wblk;
+                            uint64_t umlo =
+                                lz_u3_mc_ld64(dst + umoff - (size_t)d);
+                            uint64_t umhi =
+                                lz_u3_mc_ld64(dst + umoff - (size_t)d + (size_t)8);
+                            lz_u3_mc_st64(dst + umoff, umlo);
+                            lz_u3_mc_st64(dst + umoff + (size_t)8, umhi);
+                        } else if ((size_t)d >= take) {
+                            TSPEC_HIT(DGE);
                             size_t moff = w_tot + wblk;
                             if (take <= (size_t)8) {
+                                TSPEC_HIT(M8);
                                 if (take <= (size_t)3) {
+                                    TSPEC_HIT(M3);
                                     if (take != (size_t)0) {
+                                        TSPEC_HIT(MNZ);
                                         dst[moff] = dst[moff - (size_t)d];
                                         if (take > (size_t)1) {
+                                            TSPEC_HIT(MG1);
                                             dst[moff + (size_t)1] =
                                                 dst[moff + (size_t)1 - (size_t)d];
                                             if (take > (size_t)2) {
+                                                TSPEC_HIT(MG2);
                                                 dst[moff + (size_t)2] =
                                                     dst[moff + (size_t)2 - (size_t)d];
                                             }
@@ -3765,6 +4001,7 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                                     lz_u3_mc_st32(dst + moff + take - (size_t)4, mhi);
                                 }
                             } else if (take <= (size_t)16) {
+                                TSPEC_HIT(M16);
                                 uint64_t mlo = lz_u3_mc_ld64(dst + moff - (size_t)d);
                                 uint64_t mhi =
                                     lz_u3_mc_ld64(dst + moff - (size_t)d + take -
@@ -3775,6 +4012,7 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                                 memcpy(dst + moff, dst + moff - (size_t)d, take);
                             }
                         } else {
+                            TSPEC_DLT(take);
                             lz_u3_match_copy(dst, w_tot + wblk, d, take);
                         }
                         wblk += take;
@@ -3790,6 +4028,7 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                         lit_f = ((uint32_t)t >> 6) & (uint32_t)3;
                         sel = ((uint32_t)t >> 3) & (uint32_t)7;
                         len_f = (uint32_t)t & (uint32_t)7;
+                        TSPEC_LITF(lit_f);
 
                         /* (1) lit-len (short inline, escape calls out; same as generic).
                          * R23-TL9D-P4: lit_f==0 (82% text-L9) skips the lit block:
@@ -3800,10 +4039,12 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                          * by loop bound). lit_used/wblk += 0 no-ops. Same bytes,
                          * same FAILs (skip fires only when checks provably pass). */
                         if (lit_f == (uint32_t)0) {
+                            TSPEC_HIT(LITSKIP);
                             run = (uint32_t)0;
                             take = (size_t)0;
                         } else {
                             if (lit_f != (uint32_t)3) {
+                                TSPEC_HIT(LITSHORT);
                                 run = lit_f;
                                 lok = LZ_U3_OK;
                             } else {
@@ -3823,18 +4064,23 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                             }
                             take = (size_t)run;
                             if (take > (size_t)ds - wblk) {
+                                TSPEC_HIT(LITCLAMP);
                                 take = (size_t)ds - wblk;
                             }
                             if (take > (size_t)lit_n - (size_t)lit_used) {
                                 return LZ_U3_FAIL;
                             }
                             if (take <= (size_t)3) {
+                                TSPEC_HIT(LITLAD3);
                                 if (take != (size_t)0) {
+                                    TSPEC_HIT(LITNZ);
                                     dst[w_tot + wblk] = lit_p[lit_used];
                                     if (take > (size_t)1) {
+                                        TSPEC_HIT(LITG1);
                                         dst[w_tot + wblk + (size_t)1] =
                                             lit_p[lit_used + (uint32_t)1];
                                         if (take > (size_t)2) {
+                                            TSPEC_HIT(LITG2);
                                             dst[w_tot + wblk + (size_t)2] =
                                                 lit_p[lit_used + (uint32_t)2];
                                         }
@@ -3853,6 +4099,7 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                             uint32_t jslow3 = (uint32_t)jdsym & (uint32_t)7;
                             uint32_t jsuffix = (uint32_t)0;
                             if (jsb != (uint32_t)0) {
+                                TSPEC_HIT(JSBNZ);
                                 uint32_t jlk = (dist_used + (uint32_t)6) & (uint32_t)7;
                                 size_t jsbyte = sk6 >> 3;
                                 uint32_t jssh = (uint32_t)(sk6 & (size_t)7);
@@ -3875,6 +4122,7 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                         /* (5) match-len (short inline, escape calls out; sel split
                          * hoisted into the dist legs above). */
                         if (ml_short != ml_esc) {
+                            TSPEC_HIT(MLSHORT);
                             mlen = ml_short + (uint32_t)2;
                             lok = LZ_U3_OK;
                         } else {
@@ -3894,18 +4142,36 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                          * old match_copy(0) leg is a proven no-op). */
                         take = (size_t)mlen;
                         if (take > (size_t)ds - wblk) {
+                            TSPEC_HIT(MCLAMP);
                             take = (size_t)ds - wblk;
                         }
-                        if ((size_t)d >= take) {
+                        TSPEC_TAKE(take);
+                        if (d >= (uint32_t)16 && take <= (size_t)16 &&
+                            wblk + (size_t)16 <= (size_t)ds) {
+                            TSPEC_HIT(U16);
+                            size_t umoff = w_tot + wblk;
+                            uint64_t umlo =
+                                lz_u3_mc_ld64(dst + umoff - (size_t)d);
+                            uint64_t umhi =
+                                lz_u3_mc_ld64(dst + umoff - (size_t)d + (size_t)8);
+                            lz_u3_mc_st64(dst + umoff, umlo);
+                            lz_u3_mc_st64(dst + umoff + (size_t)8, umhi);
+                        } else if ((size_t)d >= take) {
+                            TSPEC_HIT(DGE);
                             size_t moff = w_tot + wblk;
                             if (take <= (size_t)8) {
+                                TSPEC_HIT(M8);
                                 if (take <= (size_t)3) {
+                                    TSPEC_HIT(M3);
                                     if (take != (size_t)0) {
+                                        TSPEC_HIT(MNZ);
                                         dst[moff] = dst[moff - (size_t)d];
                                         if (take > (size_t)1) {
+                                            TSPEC_HIT(MG1);
                                             dst[moff + (size_t)1] =
                                                 dst[moff + (size_t)1 - (size_t)d];
                                             if (take > (size_t)2) {
+                                                TSPEC_HIT(MG2);
                                                 dst[moff + (size_t)2] =
                                                     dst[moff + (size_t)2 - (size_t)d];
                                             }
@@ -3921,6 +4187,7 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                                     lz_u3_mc_st32(dst + moff + take - (size_t)4, mhi);
                                 }
                             } else if (take <= (size_t)16) {
+                                TSPEC_HIT(M16);
                                 uint64_t mlo = lz_u3_mc_ld64(dst + moff - (size_t)d);
                                 uint64_t mhi =
                                     lz_u3_mc_ld64(dst + moff - (size_t)d + take -
@@ -3931,6 +4198,7 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                                 memcpy(dst + moff, dst + moff - (size_t)d, take);
                             }
                         } else {
+                            TSPEC_DLT(take);
                             lz_u3_match_copy(dst, w_tot + wblk, d, take);
                         }
                         wblk += take;
@@ -3946,6 +4214,7 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                         lit_f = ((uint32_t)t >> 6) & (uint32_t)3;
                         sel = ((uint32_t)t >> 3) & (uint32_t)7;
                         len_f = (uint32_t)t & (uint32_t)7;
+                        TSPEC_LITF(lit_f);
 
                         /* (1) lit-len (short inline, escape calls out; same as generic).
                          * R23-TL9D-P4: lit_f==0 (82% text-L9) skips the lit block:
@@ -3956,10 +4225,12 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                          * by loop bound). lit_used/wblk += 0 no-ops. Same bytes,
                          * same FAILs (skip fires only when checks provably pass). */
                         if (lit_f == (uint32_t)0) {
+                            TSPEC_HIT(LITSKIP);
                             run = (uint32_t)0;
                             take = (size_t)0;
                         } else {
                             if (lit_f != (uint32_t)3) {
+                                TSPEC_HIT(LITSHORT);
                                 run = lit_f;
                                 lok = LZ_U3_OK;
                             } else {
@@ -3979,18 +4250,23 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                             }
                             take = (size_t)run;
                             if (take > (size_t)ds - wblk) {
+                                TSPEC_HIT(LITCLAMP);
                                 take = (size_t)ds - wblk;
                             }
                             if (take > (size_t)lit_n - (size_t)lit_used) {
                                 return LZ_U3_FAIL;
                             }
                             if (take <= (size_t)3) {
+                                TSPEC_HIT(LITLAD3);
                                 if (take != (size_t)0) {
+                                    TSPEC_HIT(LITNZ);
                                     dst[w_tot + wblk] = lit_p[lit_used];
                                     if (take > (size_t)1) {
+                                        TSPEC_HIT(LITG1);
                                         dst[w_tot + wblk + (size_t)1] =
                                             lit_p[lit_used + (uint32_t)1];
                                         if (take > (size_t)2) {
+                                            TSPEC_HIT(LITG2);
                                             dst[w_tot + wblk + (size_t)2] =
                                                 lit_p[lit_used + (uint32_t)2];
                                         }
@@ -4009,6 +4285,7 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                             uint32_t jslow3 = (uint32_t)jdsym & (uint32_t)7;
                             uint32_t jsuffix = (uint32_t)0;
                             if (jsb != (uint32_t)0) {
+                                TSPEC_HIT(JSBNZ);
                                 uint32_t jlk = (dist_used + (uint32_t)7) & (uint32_t)7;
                                 size_t jsbyte = sk7 >> 3;
                                 uint32_t jssh = (uint32_t)(sk7 & (size_t)7);
@@ -4031,6 +4308,7 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                         /* (5) match-len (short inline, escape calls out; sel split
                          * hoisted into the dist legs above). */
                         if (ml_short != ml_esc) {
+                            TSPEC_HIT(MLSHORT);
                             mlen = ml_short + (uint32_t)2;
                             lok = LZ_U3_OK;
                         } else {
@@ -4050,18 +4328,36 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                          * old match_copy(0) leg is a proven no-op). */
                         take = (size_t)mlen;
                         if (take > (size_t)ds - wblk) {
+                            TSPEC_HIT(MCLAMP);
                             take = (size_t)ds - wblk;
                         }
-                        if ((size_t)d >= take) {
+                        TSPEC_TAKE(take);
+                        if (d >= (uint32_t)16 && take <= (size_t)16 &&
+                            wblk + (size_t)16 <= (size_t)ds) {
+                            TSPEC_HIT(U16);
+                            size_t umoff = w_tot + wblk;
+                            uint64_t umlo =
+                                lz_u3_mc_ld64(dst + umoff - (size_t)d);
+                            uint64_t umhi =
+                                lz_u3_mc_ld64(dst + umoff - (size_t)d + (size_t)8);
+                            lz_u3_mc_st64(dst + umoff, umlo);
+                            lz_u3_mc_st64(dst + umoff + (size_t)8, umhi);
+                        } else if ((size_t)d >= take) {
+                            TSPEC_HIT(DGE);
                             size_t moff = w_tot + wblk;
                             if (take <= (size_t)8) {
+                                TSPEC_HIT(M8);
                                 if (take <= (size_t)3) {
+                                    TSPEC_HIT(M3);
                                     if (take != (size_t)0) {
+                                        TSPEC_HIT(MNZ);
                                         dst[moff] = dst[moff - (size_t)d];
                                         if (take > (size_t)1) {
+                                            TSPEC_HIT(MG1);
                                             dst[moff + (size_t)1] =
                                                 dst[moff + (size_t)1 - (size_t)d];
                                             if (take > (size_t)2) {
+                                                TSPEC_HIT(MG2);
                                                 dst[moff + (size_t)2] =
                                                     dst[moff + (size_t)2 - (size_t)d];
                                             }
@@ -4077,6 +4373,7 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                                     lz_u3_mc_st32(dst + moff + take - (size_t)4, mhi);
                                 }
                             } else if (take <= (size_t)16) {
+                                TSPEC_HIT(M16);
                                 uint64_t mlo = lz_u3_mc_ld64(dst + moff - (size_t)d);
                                 uint64_t mhi =
                                     lz_u3_mc_ld64(dst + moff - (size_t)d + take -
@@ -4087,6 +4384,7 @@ static int lz_u3_replay(uint8_t *dst, size_t w_tot, size_t room, uint32_t ds,
                                 memcpy(dst + moff, dst + moff - (size_t)d, take);
                             }
                         } else {
+                            TSPEC_DLT(take);
                             lz_u3_match_copy(dst, w_tot + wblk, d, take);
                         }
                         wblk += take;
