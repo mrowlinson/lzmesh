@@ -8,7 +8,7 @@
  * len>maxlen) cannot fire. These pins assert BOTH the verdict edge
  * (Kraft 1023/1024/1025, single-sym legs, over/under-complete, lens
  * guards) AND the vehicle post-condition: on every OK build, all
- * tab_n cells hold len 1..maxlen. Includes src/lzmesh_dec.c for
+ * tab_n cells hold len 1..maxlen. Includes src/lzmesh.c for
  * static access (test_p6_mcopy.c precedent). Exit 0 iff zero FAILs.
  */
 #include <stdint.h>
@@ -16,7 +16,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../../src/lzmesh_dec.c"
+#include "../../src/lzmesh.c"
 
 static int g_pass, g_fail;
 

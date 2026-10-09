@@ -18,9 +18,9 @@
  *      underrun, or source clobber fails;
  *  (c) guard-page edge probes (mmap + PROT_NONE): bulk+tail ending
  *      exactly at the page edge must not fault.
- * Includes src/lzmesh_dec.c for static access (dec.o refs libc only,
- * so no archive member is pulled and no duplicate arises — same trick
- * as test_p5_wordload.c). Exit 0 iff zero FAILs.
+ * Includes src/lzmesh.c for static access (merged source defines the
+ * full API in-test, so no archive member is pulled and no duplicate
+ * arises — same trick as test_p5_wordload.c). Exit 0 iff zero FAILs.
  */
 #include <stdint.h>
 #include <stdio.h>
@@ -29,7 +29,7 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
-#include "../../src/lzmesh_dec.c"
+#include "../../src/lzmesh.c"
 
 static int mc_pass, mc_fail;
 

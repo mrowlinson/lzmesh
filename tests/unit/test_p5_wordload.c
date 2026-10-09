@@ -15,8 +15,9 @@
  * blocks, also gone); no bounds-checked (src,size,cur,p,hd) wrapper
  * remains in live code — callers check EMPTY/bounds manually then
  * call lzmesh_u2_head_eq directly, which (a)/(b) already pin.
- * Includes src/lzmesh_enc.c for static access (dec.o needs no enc
- * symbols, so no archive duplicate). Exit 0 iff zero FAILs.
+ * Includes src/lzmesh.c for static access (merged source defines the
+ * full API in-test, so no archive member is pulled and no duplicate
+ * arises). Exit 0 iff zero FAILs.
  */
 #include <stdint.h>
 #include <stdio.h>
@@ -25,7 +26,7 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
-#include "../../src/lzmesh_enc.c"
+#include "../../src/lzmesh.c"
 
 static int w3_pass, w3_fail;
 

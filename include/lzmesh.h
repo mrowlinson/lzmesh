@@ -31,17 +31,14 @@
 #include <stdint.h>
 
 /*
- * Provisional pre-release version marker (decoder-complete candidate,
- * 2026-09-19). The versioning scheme and first version number are
- * coordinator decisions (docs/RELEASING.md §1 OPEN — "do not invent
- * values"), so these macros are a 0.x dev placeholder for downstream
- * feature-gating, NOT a release version claim. Replaced by the real
- * version at release-prep time.
+ * Release version 1.0.0 (2026-10-09, owner decision; scheme semver).
+ * First release version of the standalone clean-room LZMESH port.
+ * Downstream may feature-gate on MAJOR/MINOR/PATCH or STRING.
  */
-#define LZMESH_VERSION_MAJOR 0
+#define LZMESH_VERSION_MAJOR 1
 #define LZMESH_VERSION_MINOR 0
 #define LZMESH_VERSION_PATCH 0
-#define LZMESH_VERSION_STRING "0.0.0-dev"
+#define LZMESH_VERSION_STRING "1.0.0"
 
 /*
  * Encode src[0..src_size] into dst[0..dst_capacity].

@@ -63,19 +63,17 @@ decoded size (sum over blocks to the end marker). Returns 0 if framing
 is invalid. Call this to size the decode destination. Reads framing
 only; decodes no entropy data.
 
-## `LZMESH_VERSION_*` (provisional)
+## `LZMESH_VERSION_*`
 
 ```c
-#define LZMESH_VERSION_MAJOR 0
+#define LZMESH_VERSION_MAJOR 1
 #define LZMESH_VERSION_MINOR 0
 #define LZMESH_VERSION_PATCH 0
-#define LZMESH_VERSION_STRING "0.0.0-dev"
+#define LZMESH_VERSION_STRING "1.0.0"
 ```
 
-Pre-release dev placeholder for downstream feature-gating, added at
-decoder-complete candidacy (2026-09-19). NOT a version claim: scheme +
-first version are coordinator-OPEN (`docs/RELEASING.md` §1). Replaced
-by the real version at release-prep time.
+Release version 1.0.0 (2026-10-09, owner decision; scheme semver).
+First release version. Feature-gate on MAJOR/MINOR/PATCH or STRING.
 
 ## Notes
 

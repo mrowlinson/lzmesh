@@ -3,9 +3,30 @@
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
-Versioning scheme: OPEN — no versioning directive found in the allowed
-reads (KICKOFF-CLEANROOM.md names no scheme; DECISIONS.md records none).
-No version number or date is claimed below until the coordinator decides.
+Versioning scheme: semver (owner-decided 2026-10-09). Current release:
+1.0.0, below.
+
+## [Unreleased]
+
+## [1.0.0] - 2026-10-09
+
+First release. One library (`liblzmesh.a`: `lzmesh_encode`,
+`lzmesh_decode`, scratch sizes, `lzmesh_decoded_size` framing walker)
+plus one CLI (`port_cli enc|dec <level-hex>`, stdio byte pipe).
+Buffer API only; zero dependencies; no Apple code linked.
+
+Byte-identity (land6 `6b7ff34dd`): gated 15792/15792 cells, 0
+`ENC_DIFF` vs the Apple oracle — full 12784 (seeds 0–16) + holdout
+3008 (seeds 17–20, disjoint), selectors `e00/e01/e05/e09`, tier full.
+Parent-verify green: smoke 4928/0, full 12784/0, holdout 3008/0,
+units + 20 kraft-edge boundary tests PASS, veh-ident 24/24, fuzz
+11349/0/0, PGO-binary byte-identical. Fresh slice seeds 21–24 not
+covered: 5 pre-existing merge-inert diffs (recorded in README.md).
+
+Encode performance: no Apple-vs-port encode matrix exists at or after
+the land2 tip, so no encode gap is claimed; the last full matrix (R28,
+on the R27 ship tip) predates lands 1–6. Optimization frontier,
+honestly labeled — see README.md and WAVES.md.
 
 ## Gate history (moved from README.md, 2026-10-09)
 
@@ -159,7 +180,7 @@ Vector fixtures: 25 .bin + manifest (26 files, unchanged). Full corpus
 --seed-offset 0`, holdout `--seeds 4 --seed-offset 17`. Fresh-slice 5
 (pre-existing, merge-inert) match the land6 fresh-5 in README.md.
 
-## [Unreleased]
+## Pre-release history (stale `[Unreleased]` content, verbatim)
 
 ### Decoder-complete candidate 2026-09-19 (NOT a versioned release)
 

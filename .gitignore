@@ -61,4 +61,5 @@ tests/unit/test_pm_diff
 tests/unit/test_q2_splitemit
 tests/unit/test_roundtrip
 tests/unit/test_s3_padsim
+tests/unit/test_version
 !tests/unit/test_*.c

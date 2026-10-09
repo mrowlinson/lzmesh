@@ -12,7 +12,8 @@ Prerequisite: every gate in `RELEASE-CHECKLIST.md` passes.
 
 Candidate snapshots (decoder-complete candidate 2026-09-19,
 `../tmp/portrepo/release/MANIFEST.md`, scratch until re-cut) are NOT releases: they freeze the tree +
-proof matrix for review while §1 identity items stay coordinator-OPEN.
+proof matrix for review while §1 identity items stayed coordinator-OPEN
+at the time (resolved 2026-10-09; see §1).
 A candidate claims no version, tag, host, or license, and MUST NOT be
 published as a release. Checklist status at candidacy (record only;
 evidence not shipped in this tree, re-run planned): gates 2 (unit), 3
@@ -20,21 +21,24 @@ evidence not shipped in this tree, re-run planned): gates 2 (unit), 3
 gate 6 (fuzzers unwired), gate 7 (no perf data), gate 8 (audit), gate
 9–10, and the encoder halves of 4–5 are RED.
 
-## 1. Decide the release identity (OPEN)
+## 1. Decide the release identity (RESOLVED 2026-10-09)
 
-Coordinator provides:
+Owner-decided for the 1.0.0 release:
 
-- OPEN: version number and versioning scheme (e.g. semver — scheme
-  itself undecided; nothing in the allowed reads mandates one).
-- OPEN: tag name derived from the version (e.g. `vX.Y.Z` — convention
-  undecided).
-- OPEN: hosting service and repository name/location (no directive
-  found; GitHub assumed by nothing).
-- OPEN: license (DECISIONS.md D10/O1); `LICENSE`/`NOTICE` must be
-  committed before tagging.
-
-Record all four in `DECISIONS.md` and replace the OPEN markers in this
-file for the release at hand.
+- RESOLVED: version number 1.0.0, versioning scheme semver
+  (owner decision 2026-10-09).
+- RESOLVED: tag convention `vX.Y.Z` (so 1.0.0 tags as `v1.0.0`).
+  No tag is created by release-prep work itself.
+- RESOLVED: host `github.com/mrowlinson/lzmesh` — verified
+  first-hand from the prior public push precedent (cleanroom
+  evidence commit `5946fde1a`: lane-4 `3a5f76436` pushed to public
+  `mrowlinson/lzmesh` main `9c615ce..9f5cd60`; public checkout
+  remote `https://github.com/mrowlinson/lzmesh.git`; tag
+  `duet-land6` present there).
+- RESOLVED: license 0BSD (DECISIONS.md D10/O1, decided 2026-09-28;
+  confirmed in `LICENSE-CHOICE.md` + README "License: 0BSD"; full
+  text injected as `LICENSE` at the public-tree root by
+  `release/export.sh`).
 
 ## 2. Prepare the tree
 
@@ -86,9 +90,14 @@ decides; if signed, use `git tag -s` and record the key policy in
 
 ## OPEN summary (coordinator decisions; resolved items marked)
 
-- Version number and versioning scheme.
-- Tag name and signed/unsigned tag policy.
-- Hosting service, repository name, and publication location.
+- Version number and versioning scheme: RESOLVED 2026-10-09 = 1.0.0,
+  semver (owner decision).
+- Tag name and signed/unsigned tag policy: name RESOLVED = `vX.Y.Z`
+  convention (owner decision 2026-10-09); signed-vs-unsigned still
+  OPEN (see §3).
+- Hosting service, repository name, and publication location:
+  RESOLVED 2026-10-09 = `github.com/mrowlinson/lzmesh` (prior
+  public-push precedent, verified first-hand; see §1).
 - License choice: RESOLVED 2026-09-28 = 0BSD (D10/O1); gate 1 unblocked.
 - Upload artifact list (source tarball? prebuilt lib? neither?).
 - Verdict-threshold confirmation (O7), bench scope (O5), API shape (O3),

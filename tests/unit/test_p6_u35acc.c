@@ -14,7 +14,7 @@
  *  (c) 8-lane i&7 interleave differential in emit order;
  *  (d) no-overrun: pad sentinel past ceil(B/8) untouched + guard-page
  *      lanes ending at a PROT_NONE edge (any over-wide flush faults).
- * Includes src/lzmesh_enc.c for static access (no public-API calls, so
+ * Includes src/lzmesh.c for static access (no public-API calls, so
  * no archive duplicate). Exit 0 iff zero FAILs.
  */
 #include <stdint.h>
@@ -24,7 +24,7 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
-#include "../../src/lzmesh_enc.c"
+#include "../../src/lzmesh.c"
 
 static int t_pass, t_fail;
 

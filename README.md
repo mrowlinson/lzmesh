@@ -68,39 +68,14 @@ Byte-exactness at land6 `6b7ff34dd` (2026-10-08):
   s21-n262144-alphabet `e05` + `e09` (234023 vs 234032),
   s22-n255-alphabet `e01` (same length, bytes differ),
   s24-n49-alphabet `e09`, s24-n65536-alphabet `e09`.
-- Source pins: `src/lzmesh_enc.c` md5 `b11690c5` (last changed land2
-  `0902aee1e`, 2026-10-07), `src/lzmesh_dec.c` md5 `b775ba42` (land6).
+- Source pin: `src/lzmesh.c` md5 `96854130` (unify-1.0 single-source
+  merge of land2 enc `b11690c5` + land6 dec `b775ba42`; pre/post
+  CLI md5 IDENT on hello + 256KB fixture, enc+dec).
 - Method: black-box byte-identity battery, port CLI vs Apple oracle
   CLI (`tests/battery/battery.py --oracle … --port ./port_cli …`).
 
-Performance — decode gaps at land6 `6b7ff34dd`, measured 2026-10-09
-(direct Apple-vs-port bed, n=70, in-process both sides; all three
-comparators agree on direction 8/8). Gap = how much slower the port
-is; SEP = separated bands (firm), OV = overlapping (noisy):
-
-| cell | gap | letter |
-|------|-----|--------|
-| text L0 dec | +35.9% | SEP |
-| mixed L0 dec | +48.3%* | SEP, core +35–39% |
-| mixed L1 dec | +38.9% | SEP |
-| text L9 dec | +33.2% | OV |
-| text L5 dec | +30.2% | OV |
-| mixed L9 dec | +18.9%* | OV, core +13.5–16.7% |
-| mixed L5 dec | +15.2%* | OV, core +12–18% |
-| text L1 dec | +22.2% | OV (cross-bed mush, no claim) |
-
-*Pooled center storm-inflated; excursion-aware core quoted.* Each
-side decodes its own bytes (outputs byte-identical on 9/12 prescope
-cells, within 3 B on the 3 pre-existing mixed diffs, so timing inputs
-are size-matched).
-
-Encode: no Apple-vs-port matrix exists at or after the land2 tip, so
-no current encode gap is claimed. The last full enc+dec absolute
-matrix (R28, on the R27 ship tip `enc 3fec8aa3 / dec 5a147a81`, Sep
-2026) predates lands 1–6 and is stale — its tables now live in
-[CHANGELOG.md](CHANGELOG.md). Encode moved since (land2 tL5e +12.0%
-SEP vehicle-vs-stock at `0902aee1e`, 2026-10-07) but has not been
-re-measured against Apple. Optimization frontier, honestly labeled.
+Performance (decode gaps, encode status): see
+[docs/PERF-RESULTS.md](docs/PERF-RESULTS.md).
 
 ## Layout (public tree)
 
@@ -119,14 +94,15 @@ Makefile             all / selftest / unit / smoke / full / bench / pgo / clean
 DECISIONS.md         every skeleton choice + its source directive
 include/lzmesh.h     public API: encode, decode, scratch sizes,
                      decoded-size framing walker
-src/                 port sources + port_cli.c (battery CLI:
-                     enc|dec <level-hex>, stdio byte pipe)
+src/                 lzmesh.c (single-source codec) + port_cli.c
+                     (battery CLI: enc|dec <level-hex>, stdio byte pipe)
 tests/battery/       vendored divergence-battery framework (pinned)
 tests/unit/          fast unit tests + vector fixtures
 bench/               benchmarks + pinned corpus + generator
 release/             deterministic public-tree exporter (export.sh)
-docs/                BUILD / TESTING / API / PERF / RELEASING /
-                     SPEC-S9CR + CLEANROOM-LOG + DERIVATION + README
+docs/                BUILD / TESTING / API / PERF / PERF-RESULTS /
+                     RELEASING / SPEC-S9CR + CLEANROOM-LOG +
+                     DERIVATION + README
 ```
 
 What does NOT ship: research notes, agent scratch, battery result

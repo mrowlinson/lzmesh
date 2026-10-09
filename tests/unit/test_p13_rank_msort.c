@@ -5,7 +5,7 @@
  * lzmesh_u35_rank_msort must produce exactly the insertion sort's
  * permutation: (freq desc, sym desc) with distinct syms is a strict
  * total order, so the permutation is unique. Reference insertion
- * mirrors the replaced code verbatim. Includes src/lzmesh_enc.c for
+ * mirrors the replaced code verbatim. Includes src/lzmesh.c for
  * static access. Exit 0 iff zero FAILs.
  */
 #include <stdint.h>
@@ -13,7 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../../src/lzmesh_enc.c"
+#include "../../src/lzmesh.c"
 
 static int t_pass, t_fail;
 

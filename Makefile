@@ -187,8 +187,8 @@ $(PGODIR)/gen/%.o: src/%.c include/lzmesh.h
 	@mkdir -p $(PGODIR)/gen $(PGODIR)/prof
 	$(CC) $(CFLAGS) $(PGO_GEN) -c -o $@ $<
 
-$(PGODIR)/bench-gen: $(PGODIR)/gen/lzmesh_dec.o $(PGODIR)/gen/lzmesh_enc.o bench/bench.c
-	$(CC) $(CFLAGS) $(PGO_GEN) -o $@ $(PGODIR)/gen/lzmesh_dec.o $(PGODIR)/gen/lzmesh_enc.o bench/bench.c
+$(PGODIR)/bench-gen: $(PGODIR)/gen/lzmesh.o bench/bench.c
+	$(CC) $(CFLAGS) $(PGO_GEN) -o $@ $(PGODIR)/gen/lzmesh.o bench/bench.c
 
 $(PGO_PROFDATA): $(PGODIR)/bench-gen
 	@if [ -z "$(CORPUS)" ]; then \
@@ -206,14 +206,14 @@ $(PGODIR)/use/%.o: src/%.c include/lzmesh.h $(PGO_PROFDATA)
 	@mkdir -p $(PGODIR)/use
 	$(CC) $(CFLAGS) $(PGO_USE) -c -o $@ $<
 
-$(PGO_LIB): $(PGODIR)/use/lzmesh_dec.o $(PGODIR)/use/lzmesh_enc.o
-	$(AR) rcs $@ $(PGODIR)/use/lzmesh_dec.o $(PGODIR)/use/lzmesh_enc.o
+$(PGO_LIB): $(PGODIR)/use/lzmesh.o
+	$(AR) rcs $@ $(PGODIR)/use/lzmesh.o
 
 $(PGO_CLI): $(PGO_LIB) $(PGODIR)/use/port_cli.o
-	$(CC) $(CFLAGS) $(PGO_USE) -o $@ $(PGODIR)/use/lzmesh_dec.o $(PGODIR)/use/lzmesh_enc.o $(PGODIR)/use/port_cli.o
+	$(CC) $(CFLAGS) $(PGO_USE) -o $@ $(PGODIR)/use/lzmesh.o $(PGODIR)/use/port_cli.o
 
 $(PGO_BENCH): $(PGO_LIB) bench/bench.c
-	$(CC) $(CFLAGS) $(PGO_USE) -o $@ $(PGODIR)/use/lzmesh_dec.o $(PGODIR)/use/lzmesh_enc.o bench/bench.c
+	$(CC) $(CFLAGS) $(PGO_USE) -o $@ $(PGODIR)/use/lzmesh.o bench/bench.c
 
 pgo: $(PGO_LIB) $(PGO_CLI) $(PGO_BENCH)
 

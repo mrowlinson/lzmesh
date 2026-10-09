@@ -9,7 +9,7 @@
  * (2) rank_assign reassigns every length by original-freq rank, so
  * per-symbol placement is dead at both sites. PM-fail-while-fits
  * (DANGER) is 0 in the same corpus: s3-success implies PM-success.
- * Includes src/lzmesh_enc.c for static access (no public-API calls,
+ * Includes src/lzmesh.c for static access (no public-API calls,
  * so no archive duplicate). Exit 0 iff zero FAILs.
  */
 #include <stdint.h>
@@ -17,7 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../../src/lzmesh_enc.c"
+#include "../../src/lzmesh.c"
 
 static int t_pass, t_fail;
 
