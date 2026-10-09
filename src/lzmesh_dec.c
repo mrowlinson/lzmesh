@@ -548,6 +548,31 @@ static inline __attribute__((always_inline)) void lz_u3_mc_tail(
  * pure history) + the same capped tail. All paths exact-n, no
  * overrun reads or writes; overlap behavior == single forward loop
  * (each op's source sits fully below its dest start). */
+/* MCOPY-D27DBL: exponential copy for long d2-7 overlap takes
+ * (mixed-L1: 92 takes/decode, 50KB through 2-7B/iter word loops).
+ * Each step copies C bytes from [t-C,t) to [t,t+C): the source is
+ * fully written (everything below t is history or prior steps) and
+ * non-overlapping (dist==len), so every step is a plain memcpy,
+ * byte-identical to the forward loop by step induction. No dst
+ * underrun: t-dst = w+written >= W needs w>=d (C13). Step 0 rides
+ * the proven capped tail (inline, widths<=d). noinline keeps the
+ * mechanism out of the 12x-inlined hot scalar (layout). */
+static void __attribute__((noinline)) lz_u3_d27_dbl(
+    uint8_t *t, const uint8_t *s, uint32_t d, size_t n) {
+    size_t wdone = (size_t)d;
+    lz_u3_mc_tail(t, s, (size_t)d, d);
+    t += (size_t)d;
+    n -= (size_t)d;
+    while (n >= wdone) {
+        memcpy(t, t - wdone, wdone);
+        t += wdone;
+        n -= wdone;
+        wdone += wdone;
+    }
+    if (n != (size_t)0) {
+        memcpy(t, t - wdone, n);
+    }
+}
 /* R3-V1: force-inline (replay hot path; profile showed real calls/token). */
 static inline __attribute__((always_inline)) void lz_u3_match_copy_scalar(
     uint8_t *dst, size_t w, uint32_t d, size_t n) {
@@ -584,6 +609,12 @@ static inline __attribute__((always_inline)) void lz_u3_match_copy_scalar(
     }
     t = dst + w;
     s = t - (size_t)d;
+    /* MCOPY-D27DBL: long d2-7 takes ride the cold out-of-line doubler
+     * below (layout: 1 gate branch here, mechanism out of hot scalar). */
+    if (n >= (size_t)64) {
+        lz_u3_d27_dbl(t, s, d, n);
+        return;
+    }
     switch (d) {
     case (uint32_t)2:
         while (n >= (size_t)2) {
