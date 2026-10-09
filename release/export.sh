@@ -7,7 +7,12 @@
 # Builds the public tree (mrowlinson/lzmesh layout) from the given commit
 # of THIS checkout into an empty outdir:
 #   1. git archive <sha> port/ -> outdir (strip top level; tracked files
-#      only, so worktree build outputs never enter).
+#      only, so worktree build outputs never enter). port/CLEANROOM.md
+#      (1-page wall pointer) + port/docs/SPEC-S9CR.md arrive via this step.
+#   1b. git archive <sha> DERIVATION-CLEANROOM.md -> outdir root (the
+#      RE-track log goes public too: hashes-not-bytes, audited — zero
+#      Apple bytes, zero addresses, zero disassembly). Sourced from the
+#      commit, not scratch, so the export stays a pure function of <sha>.
 #   2. Belt-and-braces excludes: research/ tmp/ results/ *.a port_cli
 #      *.o *.profraw *.profdata tmp-selftest-* __pycache__.
 #   3. Inject root LICENSE (0BSD, byte-exact, embedded below).
@@ -46,6 +51,9 @@ mkdir -p "$OUT"
 
 git archive "$SHA" port | tar -x -C "$OUT" --strip-components=1
 
+# Public cleanroom docs: root derivation log (hashes-not-bytes, audited).
+git archive "$SHA" DERIVATION-CLEANROOM.md | tar -x -C "$OUT"
+
 # Excludes (none are tracked today; enforced so a future tracked
 # research/ or tmp/ can never leak into the public tree).
 rm -rf "$OUT/research" "$OUT/tmp" "$OUT/results"
@@ -73,6 +81,12 @@ EOF
 # README.md arrives via the archive (port/README.md); it must exist.
 if [ ! -f "$OUT/README.md" ]; then
   echo "export.sh: archived tree lacks port/README.md" >&2
+  exit 1
+fi
+
+# DERIVATION-CLEANROOM.md arrives via the root archive; it must exist.
+if [ ! -f "$OUT/DERIVATION-CLEANROOM.md" ]; then
+  echo "export.sh: archived tree lacks DERIVATION-CLEANROOM.md" >&2
   exit 1
 fi
 
