@@ -1597,9 +1597,12 @@ static int lz_u6h_dec2a(const uint8_t *qk, size_t *ck, const uint16_t *tab,
 #endif
     uint32_t e = tab[(w >> sh) & mask];
     uint32_t len = e >> 8;
-    if (len == (uint32_t)0 || len > maxlen) {
-        return LZ_U3_FAIL;
-    }
+    /* R4-FETCH2: per-sym len check DELETED (was: len==0||len>maxlen FAIL).
+     * Dead by construction: lz_u6h_build OK-paths overwrite EVERY cell
+     * with len 1..maxlen (single-sym leg fills len-1; Kraft==1024
+     * complete-code writes each cell exactly once), and both build
+     * callers FAIL-return before any decode. Verdict-preserving. */
+    (void)maxlen;
     *ck = pos + (size_t)len;
     *s1 = e & (uint32_t)0xFF;
     *w_out = w;
@@ -1611,9 +1614,9 @@ static int lz_u6h_dec2b(uint32_t w, uint32_t sh2, size_t *ck,
                         uint32_t *s2) {
     uint32_t e = tab[(w >> sh2) & mask];
     uint32_t len = e >> 8;
-    if (len == (uint32_t)0 || len > maxlen) {
-        return LZ_U3_FAIL;
-    }
+    /* R4-FETCH2: per-sym len check DELETED (same dead-check case as
+     * dec2a above: post-build-OK every cell holds len 1..maxlen). */
+    (void)maxlen;
     *ck = *ck + (size_t)len;
     *s2 = e & (uint32_t)0xFF;
     return LZ_U3_OK;

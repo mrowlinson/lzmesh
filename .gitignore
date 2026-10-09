@@ -16,6 +16,7 @@ __pycache__/
 tests/unit/test_boundary
 tests/unit/test_comp_roundtrip
 tests/unit/test_e00_vectors
+tests/unit/test_fetch2_kraft
 tests/unit/test_framing
 tests/unit/test_huff_suffix
 tests/unit/test_m16_db7
